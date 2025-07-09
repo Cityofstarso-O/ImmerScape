@@ -13,7 +13,7 @@ self.onmessage = (event) => {
                     console.log(`worker: handle ${message.name} using cpu`);
                     const results = GSLoader.loadFromNative(message.name, message.data);
                     if (results.valid) {
-                        const transferables = Object.values(results.data).map(data => data.buffer).filter(buffer => buffer instanceof ArrayBuffer);
+                        const transferables = Object.values(results.data).map(data => data.buffer);
                         self.postMessage({
                             'valid': results.valid,
                             'data': results.data,

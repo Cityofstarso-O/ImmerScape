@@ -62,4 +62,20 @@ export class Utils {
         };
 
     }();
+
+    static computeTexSize(texelNum) {
+        const log2TexelNum = Math.max(Math.ceil(Math.log2(texelNum)), 0);
+        if (log2TexelNum > 24) {
+            console.warn(`texelNum ${texelNum} exceeds maximum 4096 * 4096 and was clamped to maximum`);
+            log2TexelNum = 24;
+        }
+        if (log2TexelNum % 2 === 0) {
+            const sideLength = Math.pow(2, log2TexelNum / 2);
+            return { width: sideLength, height: sideLength };
+        } else {
+            const height = Math.pow(2, Math.floor(log2TexelNum / 2));
+            const width = height * 2;
+            return { width, height };
+        }
+    }
 }

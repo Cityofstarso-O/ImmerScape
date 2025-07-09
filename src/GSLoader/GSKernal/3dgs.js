@@ -87,90 +87,134 @@ export class GSKernel_3DGS {
 
     static parseData2Buffers = function() {
         const config = {
-            poscol: 4 * 3 + 4,
-            covpad: 2 * 6 + 4,
-            sh: 24 * 1,
+            pospad: {
+                low: {
+                    bytesPerTexel: 3 * 2 + 2,
+                    texelPerSplat: 1,
+                    format: "RGBA16F",
+                    array: 1,
+                },
+                medium: {
+                    bytesPerTexel: 3 * 4 + 4,
+                    texelPerSplat: 1,
+                    format: "RGBA32F",
+                    array: 1,
+                },
+            },
+            covcol: {
+                low: {
+                    bytesPerTexel: 2 * 6 + 4,
+                    texelPerSplat: 1,
+                    format: "RGBA32UI",
+                    array: 1,
+                },
+            },
+            sh: {
+                low: {  // deg 0
+                    bytesPerTexel: 0,
+                    texelPerSplat: 0,
+                    format: "",
+                    array: 0,
+                    deg: 0,
+                },
+                medium: {   // deg 1
+                    bytesPerTexel: 12,
+                    texelPerSplat: 1,
+                    format: "RGB32UI",
+                    array: 1,
+                    deg: 1,
+                },
+                high: { // deg 2
+                    bytesPerTexel: 12,
+                    texelPerSplat: 2,
+                    format: "RGB32UI",
+                    array: 1,
+                    deg: 2,
+                },
+            },
         }
         const unit8PackRangeMin = -1.0;
         const unit8PackRangeMax = 1.0;
 
-        return function(pointCount, dataview) {
-            const poscolSize = config.poscol * pointCount;
-            const covpadSize = config.covpad * pointCount;
-            const shSize = config.sh * pointCount;
-            // TODO: deg 0 and deg1 and deg3
-            if (4096 * 4096 * 12 / 24 <= pointCount) {
-                return {
-                    valid: false,
-                    error: `point count ${pointCount} exceeds 4096 * 4096 * 12 / 24`,
-                }
+        return function(pointCount, dataview, quality = 'meduim') {
+            // a little hack, pointCount shouldn't be too large (<= 8,388,608)
+            if (pointCount > 4096 * 2048) {
+                console.warn(`pointCount ${pointCount} is too large and is clamped to 8,388,608`);
+                pointCount = 4096 * 2048;
             }
-            const poscolBuf = new ArrayBuffer(poscolSize);
-            const covpadBuf = new ArrayBuffer(covpadSize);
-            const shBuf = new ArrayBuffer(shSize);
 
-            const poscolView = new DataView(poscolBuf);
-            const covpadView = new DataView(covpadBuf);
-            const shView = new DataView(shBuf);
+            let currentConfig = config.pospad[quality] || config.pospad.medium || config.pospad.low;
+            const pospad = {...currentConfig};
+            currentConfig = config.covcol[quality] || config.covcol.medium || config.covcol.low;
+            const covcol = {...currentConfig};
+            currentConfig = config.sh[quality] || config.sh.medium || config.sh.low;
+            const sh = {...currentConfig};
+
+            Object.assign(pospad, Utils.computeTexSize(pospad.texelPerSplat * pointCount));
+            Object.assign(covcol, Utils.computeTexSize(covcol.texelPerSplat * pointCount));
+            Object.assign(sh, Utils.computeTexSize(sh.texelPerSplat * pointCount));
+
+            // TODO: deg 0 and deg1 and deg3
+            pospad.buffer = new ArrayBuffer(pospad.width * pospad.height * pospad.bytesPerTexel);
+            covcol.buffer = new ArrayBuffer(covcol.width * covcol.height * covcol.bytesPerTexel);
+            sh.buffer = new ArrayBuffer(sh.width * sh.height * sh.bytesPerTexel);
+
+            const pospadView = new DataView(pospad.buffer);
+            const covcolView = new DataView(covcol.buffer);
+            const shView = new DataView(sh.buffer);
             const splat = {...GSKernel_3DGS.params};
-            let poscolOffset = 0, covpadOffset = 0, shOffset = 0;
+            let pospadOffset = 0, covcolOffset = 0, shOffset = 0;
             for (let i = 0;i < pointCount; ++i) {
                 GSKernel_3DGS.parseSplatFromData(i, splat, dataview);
-                console.log(splat)
 
-                poscolView.setFloat32(poscolOffset + 0, splat.x, true);
-                poscolView.setFloat32(poscolOffset + 4, splat.y, true);
-                poscolView.setFloat32(poscolOffset + 8, splat.z, true);
-                Utils.packFloat2rgba(
-                    splat.cr, splat.cg, splat.cb, splat.ca,
-                    poscolView, poscolOffset + 12
-                );
+                pospadView.setFloat32(pospadOffset + 0, splat.x, true);
+                pospadView.setFloat32(pospadOffset + 4, splat.y, true);
+                pospadView.setFloat32(pospadOffset + 8, splat.z, true);
 
                 Utils.computeCov3dPack2fp16(
                     splat.sx, splat.sy, splat.sz, splat.rx, splat.ry, splat.rz, splat.rw, 
-                    covpadView, covpadOffset
+                    covcolView, covcolOffset
                 );
-
-                for(let j = 0;j < 3;++j) {
-                    shView.setUint8(shOffset + 3 * j + 0, Utils.float2uint8(splat['d1r' + j], unit8PackRangeMin, unit8PackRangeMax));
-                    shView.setUint8(shOffset + 3 * j + 1, Utils.float2uint8(splat['d1g' + j], unit8PackRangeMin, unit8PackRangeMax));
-                    shView.setUint8(shOffset + 3 * j + 2, Utils.float2uint8(splat['d1b' + j], unit8PackRangeMin, unit8PackRangeMax));
+                Utils.packFloat2rgba(
+                    splat.cr, splat.cg, splat.cb, splat.ca,
+                    covcolView, covcolOffset + 12
+                );
+                if (sh.deg >= 1) {
+                    for(let j = 0;j < 3;++j) {
+                        shView.setUint8(shOffset + 3 * j + 0, Utils.float2uint8(splat['d1r' + j], unit8PackRangeMin, unit8PackRangeMax));
+                        shView.setUint8(shOffset + 3 * j + 1, Utils.float2uint8(splat['d1g' + j], unit8PackRangeMin, unit8PackRangeMax));
+                        shView.setUint8(shOffset + 3 * j + 2, Utils.float2uint8(splat['d1b' + j], unit8PackRangeMin, unit8PackRangeMax));
+                    }
+                    if (sh.deg >= 2) {
+                        for(let j = 0;j < 5;++j) {
+                            shView.setUint8(shOffset + 9 + 3 * j + 0, Utils.float2uint8(splat['d2r' + j], unit8PackRangeMin, unit8PackRangeMax));
+                            shView.setUint8(shOffset + 9 + 3 * j + 1, Utils.float2uint8(splat['d2g' + j], unit8PackRangeMin, unit8PackRangeMax));
+                            shView.setUint8(shOffset + 9 + 3 * j + 2, Utils.float2uint8(splat['d2b' + j], unit8PackRangeMin, unit8PackRangeMax));
+                        }
+                        // we don't use deg3 for now
+                        /*if (sh.deg >= 3) {
+                            for(let j = 0;j < 7;++j) {
+                                shView.setUint8(shOffset + 24 + 3 * j + 0, Utils.float2uint8(splat['d3r' + j], unit8PackRangeMin, unit8PackRangeMax));
+                                shView.setUint8(shOffset + 24 + 3 * j + 1, Utils.float2uint8(splat['d3g' + j], unit8PackRangeMin, unit8PackRangeMax));
+                                shView.setUint8(shOffset + 24 + 3 * j + 2, Utils.float2uint8(splat['d3b' + j], unit8PackRangeMin, unit8PackRangeMax));
+                            }
+                        }*/
+                    }
                 }
+                
+                pospadOffset += pospad.bytesPerTexel * pospad.texelPerSplat;
+                covcolOffset += covcol.bytesPerTexel * covcol.texelPerSplat;
+                shOffset += sh.bytesPerTexel * sh.texelPerSplat;
+            }
 
-                for(let j = 0;j < 5;++j) {
-                    shView.setUint8(shOffset + 9 + 3 * j + 0, Utils.float2uint8(splat['d2r' + j], unit8PackRangeMin, unit8PackRangeMax));
-                    shView.setUint8(shOffset + 9 + 3 * j + 1, Utils.float2uint8(splat['d2g' + j], unit8PackRangeMin, unit8PackRangeMax));
-                    shView.setUint8(shOffset + 9 + 3 * j + 2, Utils.float2uint8(splat['d2b' + j], unit8PackRangeMin, unit8PackRangeMax));
-                }
-
-                // we don't use deg3 for now
-                /*for(let j = 0;j < 7;++j) {
-                    shView.setUint8(shOffset + 24 + 3 * j + 0, Utils.float2uint8(splat['d3r' + j], unit8PackRangeMin, unit8PackRangeMax));
-                    shView.setUint8(shOffset + 24 + 3 * j + 1, Utils.float2uint8(splat['d3g' + j], unit8PackRangeMin, unit8PackRangeMax));
-                    shView.setUint8(shOffset + 24 + 3 * j + 2, Utils.float2uint8(splat['d3b' + j], unit8PackRangeMin, unit8PackRangeMax));
-                }*/
-
-                poscolOffset += config.poscol;
-                covpadOffset += config.covpad;
-                shOffset += config.sh;
+            const data = {pospad, covcol};
+            if (sh.deg >= 1) {
+                data.sh = sh;
             }
 
             return {
                 valid: true,
-                data: {
-                    poscol: {
-                        bytesPerTexel: config.poscol,
-                        buffer: poscolBuf,
-                    },
-                    covpad: {
-                        bytesPerTexel: config.covpad,
-                        buffer: covpadBuf,
-                    },
-                    sh: {
-                        bytesPerTexel: config.sh,
-                        buffer: shBuf,
-                    },
-                }
+                data: data,
             }
         }
     }();
