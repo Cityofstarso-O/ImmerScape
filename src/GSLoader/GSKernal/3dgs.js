@@ -4,7 +4,7 @@ export class GSKernel_3DGS {
     static offsets = [];
     static params = {
         x: 0, y: 1, z: 2,
-        sx: 3, sx: 4, sx: 5,
+        sx: 3, sy: 4, sz: 5,
         rx: 6, ry: 7, rz: 8, rw: 9,
         cr: 10, cg: 11, cb: 12, ca: 13,
         d1r0: 14, d1r1: 15, d1r2: 16,
@@ -66,12 +66,24 @@ export class GSKernel_3DGS {
         }
     }();
 
-    static parseSplatFromData(idx, splat, dataf32) {
-        const splatOffset = idx * GSKernel_3DGS.params.total;
-        Object.keys(splat).forEach(key => {
-            splat[key] = dataf32[splatOffset + GSKernel_3DGS.offsets[GSKernel_3DGS.params[key]]];
-        });
-    }
+    static parseSplatFromData = function() {
+        const SH_C0 = 0.28209479177387814;
+
+        return function(idx, splat, dataview) {
+            const splatBytesOffset = idx * GSKernel_3DGS.offsets[GSKernel_3DGS.params.total] * 4;
+            Object.keys(splat).forEach(key => {
+                if(key === 'total') return;
+                splat[key] = dataview.getFloat32(splatBytesOffset + GSKernel_3DGS.offsets[GSKernel_3DGS.params[key]] * 4, true);
+            });
+            splat.sx = Math.exp(splat.sx);
+            splat.sy = Math.exp(splat.sy);
+            splat.sz = Math.exp(splat.sz);
+            splat.cr = Utils.clamp(0.5 + SH_C0 * splat.cr, 0, 1);
+            splat.cg = Utils.clamp(0.5 + SH_C0 * splat.cg, 0, 1);
+            splat.cb = Utils.clamp(0.5 + SH_C0 * splat.cb, 0, 1);
+            splat.ca = Utils.sigmoid(splat.ca);
+        }
+    }();
 
     static parseData2Buffers = function() {
         const config = {
@@ -79,12 +91,10 @@ export class GSKernel_3DGS {
             covpad: 2 * 6 + 4,
             sh: 24 * 1,
         }
-        const SH_C0 = 0.28209479177387814;
         const unit8PackRangeMin = -1.0;
         const unit8PackRangeMax = 1.0;
 
-
-        return function(pointCount, data) {
+        return function(pointCount, dataview) {
             const poscolSize = config.poscol * pointCount;
             const covpadSize = config.covpad * pointCount;
             const shSize = config.sh * pointCount;
@@ -102,18 +112,17 @@ export class GSKernel_3DGS {
             const poscolView = new DataView(poscolBuf);
             const covpadView = new DataView(covpadBuf);
             const shView = new DataView(shBuf);
-
-            const dataf32 = new Float32Array(data);
             const splat = {...GSKernel_3DGS.params};
             let poscolOffset = 0, covpadOffset = 0, shOffset = 0;
             for (let i = 0;i < pointCount; ++i) {
-                GSKernel_3DGS.parseSplatFromData(i, splat, dataf32);
+                GSKernel_3DGS.parseSplatFromData(i, splat, dataview);
+                console.log(splat)
 
                 poscolView.setFloat32(poscolOffset + 0, splat.x, true);
                 poscolView.setFloat32(poscolOffset + 4, splat.y, true);
                 poscolView.setFloat32(poscolOffset + 8, splat.z, true);
                 Utils.packFloat2rgba(
-                    0.5 + SH_C0 * splat.r, 0.5 + SH_C0 * splat.g, 0.5 + SH_C0 * splat.b, Utils.sigmoid(splat.a),
+                    splat.cr, splat.cg, splat.cb, splat.ca,
                     poscolView, poscolOffset + 12
                 );
 

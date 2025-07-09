@@ -17,6 +17,10 @@ export class Utils {
         return Utils.clamp(Math.round((x - min) / (max - min) * 255), 0, 255);
     }
 
+    static uint82float(x, min = 0, max = 1) {
+        return Utils.clamp(x, 0, 255) / 255 * (max - min) + min;
+    }
+
     static packFloat2rgba(r, g, b, a, out, offset = 0) {
         out.setUint8(offset + 0, Utils.float2uint8(r));
         out.setUint8(offset + 1, Utils.float2uint8(g));
@@ -37,7 +41,7 @@ export class Utils {
             tempMatrix4.makeScale(sx, sy, sz);
             scaleMatrix.setFromMatrix4(tempMatrix4);
 
-            tempMatrix4.makeRotationFromQuaternion(new Quaternion(rx, ry, rz, rw));
+            tempMatrix4.makeRotationFromQuaternion(new Quaternion(rx, ry, rz, rw).normalize());
             rotationMatrix.setFromMatrix4(tempMatrix4);
 
             covarianceMatrix.copy(rotationMatrix).multiply(scaleMatrix);
