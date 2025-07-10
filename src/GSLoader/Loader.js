@@ -1,6 +1,5 @@
-import { ParserType, LoadType, FileType } from "../Global.js";
-import { PlyLoader } from "./TypeLoader/PlyLoader.js";
-import { EventBus } from "../EventBus.js";
+import { ParserType, LoadType } from "../Global.js";
+import { Utils } from "../Utils.js";
 
 export class GSLoader {
     constructor(eventBus) {
@@ -30,7 +29,7 @@ export class GSLoader {
                 console.log(`[${(this.recvTime - this.sendTime)}ms] ${buffers}`);
                 this.eventBus.emit('buffersReady', {
                     buffers: buffers,
-                    sceneName: GSLoader.extractFileName(this.currentFile),
+                    sceneName: Utils.extractFileName(this.currentFile),
                 });
             } else {
                 console.log(`[${(this.recvTime - this.sendTime)}ms] GSLoader ERROR: ${message.error}`);
@@ -61,47 +60,4 @@ export class GSLoader {
         this.sendTime = 0;
         this.recvTime = 0;
     }
-
-    static extractFileExtension(fileName) {
-        return fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase();
-    }
-    static extractFileName(fileName) {
-        const fileNameWithExtension = fileName.split('/').pop().split('\\').pop();
-        const name = fileNameWithExtension.split('.').slice(0, -1).join('.');
-        return name;
-    }
-
-    /*return = {
-        valid: Boolean,
-        error: String,
-        data: {
-            xxx: {
-                bytesPertexel: Number,
-                buffer: ArrayBuffer,
-            }
-        },
-    };*/
-    static loadFromNative = function() {
-        const map2FileType = {
-            'ply': FileType.PLY,
-            'spz': FileType.SPZ,
-            'splat': FileType.SPLAT,
-        }
-
-        return function(name, content) {
-            const extension = GSLoader.extractFileExtension(name);
-            const fileType = map2FileType[extension] || FileType.NONE;
-            switch (fileType) {
-                case FileType.PLY:
-                    return PlyLoader.loadFromNative(content);
-                default:
-                    return {
-                        'valid': false,
-                        'error': 'Unknown file extension: ' + extension,
-                    };
-            }
-                
-
-        };
-    }();
 }

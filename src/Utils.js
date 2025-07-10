@@ -78,4 +78,14 @@ export class Utils {
             return { width, height };
         }
     }
+
+    static extractFileExtension(fileName) {
+        return fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase();
+    }
+    
+    static extractFileName(fileName) {
+        const fileNameWithExtension = fileName.split('/').pop().split('\\').pop();
+        const name = fileNameWithExtension.split('.').slice(0, -1).join('.');
+        return name;
+    }
 }

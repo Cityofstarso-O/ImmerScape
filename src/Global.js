@@ -23,3 +23,14 @@ export const FileType = {
     'SPLAT': 2,
     'SPZ': 3,
 };
+
+export const GraphicsApiType = {
+    'NONE': 0,
+    'WEBGL': 1,
+    'WEBGPU': 2,
+};
+
+// should not be used in worker
+export class GlobalVars {
+    static graphicsAPI = GraphicsApiType.NONE;
+};

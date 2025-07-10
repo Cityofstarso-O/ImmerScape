@@ -89,12 +89,14 @@ export class GSKernel_3DGS {
         const config = {
             pospad: {
                 low: {
+                    name: 'Pos6Pad2',
                     bytesPerTexel: 3 * 2 + 2,
                     texelPerSplat: 1,
                     format: "RGBA16F",
                     array: 1,
                 },
                 medium: {
+                    name: 'Pos12Pad4',
                     bytesPerTexel: 3 * 4 + 4,
                     texelPerSplat: 1,
                     format: "RGBA32F",
@@ -103,6 +105,7 @@ export class GSKernel_3DGS {
             },
             covcol: {
                 low: {
+                    name: 'Cov12Col4',
                     bytesPerTexel: 2 * 6 + 4,
                     texelPerSplat: 1,
                     format: "RGBA32UI",
@@ -111,6 +114,7 @@ export class GSKernel_3DGS {
             },
             sh: {
                 low: {  // deg 0
+                    name: '',
                     bytesPerTexel: 0,
                     texelPerSplat: 0,
                     format: "",
@@ -118,6 +122,7 @@ export class GSKernel_3DGS {
                     deg: 0,
                 },
                 medium: {   // deg 1
+                    name: 'SH9Pad3',
                     bytesPerTexel: 12,
                     texelPerSplat: 1,
                     format: "RGB32UI",
@@ -125,6 +130,7 @@ export class GSKernel_3DGS {
                     deg: 1,
                 },
                 high: { // deg 2
+                    name: 'SH24',
                     bytesPerTexel: 12,
                     texelPerSplat: 2,
                     format: "RGB32UI",

@@ -1,8 +1,11 @@
+import { GraphicsApiType, GlobalVars } from "../Global.js";
+
 export class WebGL {
     constructor(canvas) {
         this.api = canvas.getContext("webgl2", {
             antialias: false,
         });
+        GlobalVars.graphicsAPI = GraphicsApiType.WEBGL;
     }
 
     setupTexture = function() {
@@ -54,8 +57,6 @@ export class WebGL {
                 gl[type],                   // type
                 new TypedArray(desc.buffer),
             );
-            console.log(1);
-            console.log(gl[desc.format], desc.width, desc.height, format, gl[format], gl[type], TypedArray, desc);
 
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
