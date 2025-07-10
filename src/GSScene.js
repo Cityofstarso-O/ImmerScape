@@ -1,5 +1,3 @@
-import { Scene } from "../external/three.module.js";
-import { EventBus } from "./EventBus.js";
 import { Utils } from "./Utils.js";
 
 export class GSScene {
@@ -9,12 +7,15 @@ export class GSScene {
         this.scenes = {};
         this.graphicsAPI = graphicsAPI;
 
-        this.destroyBufOnSetupTex = true;
+        this.destroyBufOnSetupTex = false;
     }
 
     async onBuffersReady({ buffers, sceneName }) {
         this.scenes[sceneName] = buffers;
         this.setupTex(sceneName);
+        GSScene.debugUnpackBuffer(buffers, 0);
+        GSScene.debugUnpackBuffer(buffers, 1);
+        GSScene.debugUnpackBuffer(buffers, 2);
     }
 
     setupTex(sceneName) {

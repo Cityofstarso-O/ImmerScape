@@ -1,7 +1,40 @@
-import { GSLoader } from "./Loader.js";
-import { ParserType, LoadType } from "../Global.js";
+import { ParserType, LoadType, FileType } from "../Global.js";
+import { Utils } from "../Utils.js";
+import { PlyLoader } from "./TypeLoader/PlyLoader.js";
 
 console.log('Worker: Parser.js module loaded successfully');
+
+/*return = {
+    valid: Boolean,
+    error: String,
+    data: {
+        xxx: {
+            bytesPertexel: Number,
+            buffer: ArrayBuffer,
+        }
+    },
+};*/
+const loadFromNative = function() {
+    const map2FileType = {
+        'ply': FileType.PLY,
+        'spz': FileType.SPZ,
+        'splat': FileType.SPLAT,
+    }
+    return function(name, content) {
+        const extension = Utils.extractFileExtension(name);
+        const fileType = map2FileType[extension] || FileType.NONE;
+        switch (fileType) {
+            case FileType.PLY:
+                return PlyLoader.loadFromNative(content);
+            default:
+                return {
+                    'valid': false,
+                    'error': 'Unknown file extension: ' + extension,
+                };
+        }
+            
+    };
+}();
 
 self.onmessage = (event) => {
     const message = event.data;
@@ -11,7 +44,7 @@ self.onmessage = (event) => {
             switch (message.parser) {
                 case ParserType.CPU:
                     console.log(`worker: handle ${message.name} using cpu`);
-                    const results = GSLoader.loadFromNative(message.name, message.data);
+                    const results = loadFromNative(message.name, message.data);
                     if (results.valid) {
                         const transferables = Object.values(results.data).map(data => data.buffer);
                         self.postMessage({
