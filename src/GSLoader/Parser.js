@@ -46,7 +46,7 @@ self.onmessage = (event) => {
                     console.log(`worker: handle ${message.name} using cpu`);
                     const results = loadFromNative(message.name, message.data);
                     if (results.valid) {
-                        const transferables = Object.values(results.data).map(data => data.buffer);
+                        const transferables = Object.values(results.data.buffers).map(value => value.buffer);
                         self.postMessage({
                             'valid': results.valid,
                             'data': results.data,

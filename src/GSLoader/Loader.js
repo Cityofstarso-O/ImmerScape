@@ -25,10 +25,10 @@ export class GSLoader {
             const message = event.data;
             this.recvTime = performance.now();
             if (message.valid) {
-                const buffers = message.data;
-                console.log(`[${(this.recvTime - this.sendTime)}ms] ${buffers}`);
+                const data = message.data;
+                console.log(`[${(this.recvTime - this.sendTime)}ms] ${data}`);
                 this.eventBus.emit('buffersReady', {
-                    buffers: buffers,
+                    data: data,
                     sceneName: Utils.extractFileName(this.currentFile),
                 });
             } else {
