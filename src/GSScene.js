@@ -10,21 +10,22 @@ export class GSScene {
         this.destroyBufOnSetupTex = false;
     }
 
-    async onBuffersReady({ buffers, sceneName }) {
-        this.scenes[sceneName] = buffers;
+    async onBuffersReady({ data, sceneName }) {
+        this.scenes[sceneName] = data;
         this.setupTex(sceneName);
-        GSScene.debugUnpackBuffer(buffers, 0);
-        GSScene.debugUnpackBuffer(buffers, 1);
-        GSScene.debugUnpackBuffer(buffers, 2);
+        GSScene.debugUnpackBuffer(data.buffers, 0);
+        GSScene.debugUnpackBuffer(data.buffers, 1);
+        GSScene.debugUnpackBuffer(data.buffers, 2);
     }
 
     setupTex(sceneName) {
-        Object.values(this.scenes[sceneName]).forEach(buffers => {
-            this.graphicsAPI.setupTexture(buffers);
+        Object.values(this.scenes[sceneName].buffers).forEach(value => {
+            this.graphicsAPI.setupTexture(value);
             if (this.destroyBufOnSetupTex) {
-                buffers.buffer = null;
+                value.buffer = null;
             }
         });
+        console.log(this.scenes[sceneName])
     }
 
     static debugUnpackBuffer(buffers, idx = 0) {

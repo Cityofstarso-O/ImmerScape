@@ -2,7 +2,7 @@ import { GraphicsApiType, GlobalVars } from "../Global.js";
 
 export class WebGL {
     constructor(canvas) {
-        this.api = canvas.getContext("webgl2", {
+        this.graphicsAPI = canvas.getContext("webgl2", {
             antialias: false,
         });
         GlobalVars.graphicsAPI = GraphicsApiType.WEBGL;
@@ -39,7 +39,7 @@ export class WebGL {
         }
 
         return function(desc) {
-            const gl = this.api;
+            const gl = this.graphicsAPI;
 
             const texture = gl.createTexture();
             gl.bindTexture(gl.TEXTURE_2D, texture);
@@ -66,4 +66,78 @@ export class WebGL {
             desc.texture = texture;
         }
     }();
+
+    setupProgram(vsSrc, fsSrc) {
+        const gl = this.graphicsAPI;
+
+        const vertexShader = this.compileShader(gl.VERTEX_SHADER, vsSrc);
+        const fragmentShader = this.compileShader(gl.FRAGMENT_SHADER, fsSrc);
+
+        if (!vertexShader || !fragmentShader) {
+            return null;
+        }
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            console.error('Program link error:', gl.getProgramInfoLog(program));
+            gl.deleteProgram(program);
+            return null;
+        }
+
+        gl.deleteShader(vertexShader);
+        gl.deleteShader(fragmentShader);
+
+        return program;
+    }
+
+    compileShader(type, source) {
+        const gl = this.graphicsAPI;
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            console.error(`${type === gl.VERTEX_SHADER ? 'Vertex' : 'Fragment'} shader error:`, gl.getShaderInfoLog(shader));
+            gl.deleteShader(shader);
+            return null;
+        }
+
+        return shader;
+    }
+
+    getUniform(program) {
+        const gl = this.graphicsAPI;
+        const uniformMap = {};
+
+        const numUniforms = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
+        for (let i = 0; i < numUniforms; i++) {
+            const info = gl.getActiveUniform(program, i);
+            const location = gl.getUniformLocation(program, info.name);
+            uniformMap[info.name] = location;
+        }
+        return uniformMap;
+    }
+
+    getAttrib(program) {
+        const gl = this.graphicsAPI;
+        const attribMap = {};
+
+        const numAttribs = gl.getProgramParameter(program, gl.ACTIVE_ATTRIBUTES);
+        for (let i = 0; i < numAttribs; i++) {
+            const info = gl.getActiveAttrib(program, i);
+            const location = gl.getAttribLocation(program, info.name);
+            attribMap[info.name] = location;
+        }
+        return attribMap;
+    }
+
+    deleteProgram(program) {
+        if (program) {
+            this.graphicsAPI.deleteProgram(program);
+        }
+    }
 }

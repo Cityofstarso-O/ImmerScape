@@ -18,6 +18,8 @@ export class GSKernel_3DGS {
         d3b0: 52, d3b1: 53, d3b2: 54, d3b3: 55, d3b4: 56, d3b5: 57, d3b6: 58,
         total: 59, 
     };
+    static unit8PackRangeMin = -1.0;
+    static unit8PackRangeMax = 1.0;
     static identifyGSType(offsets) {
         // a little hack, we only check f_rest_x to differ from 3dgs and spacetime
         const keysToCheck = [
@@ -139,8 +141,6 @@ export class GSKernel_3DGS {
                 },
             },
         }
-        const unit8PackRangeMin = -1.0;
-        const unit8PackRangeMax = 1.0;
 
         return function(pointCount, dataview, quality = 'meduim') {
             // a little hack, pointCount shouldn't be too large (<= 8,388,608)
@@ -187,15 +187,15 @@ export class GSKernel_3DGS {
                 );
                 if (sh.deg >= 1) {
                     for(let j = 0;j < 3;++j) {
-                        shView.setUint8(shOffset + 3 * j + 0, Utils.float2uint8(splat['d1r' + j], unit8PackRangeMin, unit8PackRangeMax));
-                        shView.setUint8(shOffset + 3 * j + 1, Utils.float2uint8(splat['d1g' + j], unit8PackRangeMin, unit8PackRangeMax));
-                        shView.setUint8(shOffset + 3 * j + 2, Utils.float2uint8(splat['d1b' + j], unit8PackRangeMin, unit8PackRangeMax));
+                        shView.setUint8(shOffset + 3 * j + 0, Utils.float2uint8(splat['d1r' + j], GSKernel_3DGS.unit8PackRangeMin, GSKernel_3DGS.unit8PackRangeMax));
+                        shView.setUint8(shOffset + 3 * j + 1, Utils.float2uint8(splat['d1g' + j], GSKernel_3DGS.unit8PackRangeMin, GSKernel_3DGS.unit8PackRangeMax));
+                        shView.setUint8(shOffset + 3 * j + 2, Utils.float2uint8(splat['d1b' + j], GSKernel_3DGS.unit8PackRangeMin, GSKernel_3DGS.unit8PackRangeMax));
                     }
                     if (sh.deg >= 2) {
                         for(let j = 0;j < 5;++j) {
-                            shView.setUint8(shOffset + 9 + 3 * j + 0, Utils.float2uint8(splat['d2r' + j], unit8PackRangeMin, unit8PackRangeMax));
-                            shView.setUint8(shOffset + 9 + 3 * j + 1, Utils.float2uint8(splat['d2g' + j], unit8PackRangeMin, unit8PackRangeMax));
-                            shView.setUint8(shOffset + 9 + 3 * j + 2, Utils.float2uint8(splat['d2b' + j], unit8PackRangeMin, unit8PackRangeMax));
+                            shView.setUint8(shOffset + 9 + 3 * j + 0, Utils.float2uint8(splat['d2r' + j], GSKernel_3DGS.unit8PackRangeMin, GSKernel_3DGS.unit8PackRangeMax));
+                            shView.setUint8(shOffset + 9 + 3 * j + 1, Utils.float2uint8(splat['d2g' + j], GSKernel_3DGS.unit8PackRangeMin, GSKernel_3DGS.unit8PackRangeMax));
+                            shView.setUint8(shOffset + 9 + 3 * j + 2, Utils.float2uint8(splat['d2b' + j], GSKernel_3DGS.unit8PackRangeMin, GSKernel_3DGS.unit8PackRangeMax));
                         }
                         // we don't use deg3 for now
                         /*if (sh.deg >= 3) {
@@ -213,15 +213,129 @@ export class GSKernel_3DGS {
                 shOffset += sh.bytesPerTexel * sh.texelPerSplat;
             }
 
-            const data = {pospad, covcol};
+            const buffers = {pospad, covcol};
             if (sh.deg >= 1) {
-                data.sh = sh;
+                buffers.sh = sh;
             }
 
             return {
                 valid: true,
-                data: data,
+                data: {
+                    buffers: buffers,
+                    gsType: 'ThreeD',
+                },
             }
         }
     }();
+
+    static getUniformDefines() {
+        return `
+            // 3dgs specific uniforms
+            // nothing
+        `;
+    }
+
+    static getFetchFunc(buffers) {
+        let res = ``;
+        const pospad = buffers.pospad;
+        if (pospad) {
+            res += `
+                void fetchCenter(in uint splatIndex, inout vec3 center)
+                {
+                    center = vec3(texelFetch(${pospad.name}, index2uv(splatIndex, ${pospad.texelPerSplat}u, 0u, textureSize(${pospad.name}, 0)), 0));
+                }
+            `
+        }
+        const covcol = buffers.covcol;
+        if (covcol) {
+            res += `
+                void fetchCovCol(in uint splatIndex, inout mat3 cov3d, inout vec4 color)
+                {
+                    uvec4 texel = texelFetch(${covcol.name}, index2uv(splatIndex, ${covcol.texelPerSplat}u, 0u, textureSize(${covcol.name}, 0)), 0);
+                    vec2 cov01 = uint2fp16x2(texel.x);
+                    vec2 cov24 = uint2fp16x2(texel.y);
+                    vec2 cov58 = uint2fp16x2(texel.z);
+                    cov3d = mat3(
+                        cov01.x, cov01.y, cov24.x,
+                        cov01.y, cov24.y, cov58.x,
+                        cov24.x, cov58.x, cov58.y
+                    );
+                    color = uint2rgba(texel.w);
+                }
+            `
+        }
+        const sh = buffers.sh;
+        if (sh) {
+            const deg2 = sh.degree === 2;
+            const range = (GSKernel_3DGS.unit8PackRangeMax - GSKernel_3DGS.unit8PackRangeMin).toFixed(5);
+            const min = GSKernel_3DGS.unit8PackRangeMin.toFixed(5);
+            res += `
+                void fetchSH(in uint splatIndex, inout vec3 shd1[3]${deg2 ? `, inout vec3 shd2[5]` : ``})
+                {
+                    uvec4 texel = texelFetch(${sh.name}, index2uv(splatIndex, ${sh.texelPerSplat}u, 0u, textureSize(${sh.name}, 0)), 0);
+                    vec4 sh00_03 = uint2rgba(texel.x);
+                    vec4 sh04_07 = uint2rgba(texel.y);
+                    vec4 sh08_11 = uint2rgba(texel.z);
+                    shd1[0] = vec3(sh00_03.x, sh00_03.y, sh00_03.z) * ${range} + (${min});
+                    shd1[1] = vec3(sh00_03.w, sh04_07.x, sh04_07.y) * ${range} + (${min});
+                    shd1[2] = vec3(sh04_07.z, sh04_07.w, sh08_11.x) * ${range} + (${min});
+                    ${deg2 ? `
+                    texel = texelFetch(${sh.name}, index2uv(splatIndex, ${sh.texelPerSplat}u, 1u, textureSize(${sh.name}, 0)), 0);
+                    vec4 sh12_15 = uint2rgba(texel.x);
+                    vec4 sh16_19 = uint2rgba(texel.y);
+                    vec4 sh20_23 = uint2rgba(texel.z);
+                    shd2[0] = vec3(sh08_11.y, sh08_11.z, sh08_11.w) * ${range} + (${min});
+                    shd2[1] = vec3(sh12_15.x, sh12_15.y, sh12_15.z) * ${range} + (${min});
+                    shd2[2] = vec3(sh12_15.w, sh16_19.x, sh16_19.y) * ${range} + (${min});
+                    shd2[3] = vec3(sh16_19.z, sh16_19.w, sh20_23.x) * ${range} + (${min});
+                    shd2[4] = vec3(sh20_23.y, sh20_23.z, sh20_23.w) * ${range} + (${min});
+                    ` : ``}
+                }
+            `
+        }
+
+        return res;
+    }
+
+    static getFetchParams(buffers) {
+        let res = `
+            fetchCenter(splatIndex, splatCenter);
+            fetchCovCol(splatIndex, Vrk, splatColor);
+        `
+
+        return res;
+    }
+
+    static getSpecificCode(buffers) {
+        const sh = buffers.sh;
+        let res = ``;
+        if (sh) {
+            const deg2 = sh.degree === 2;
+            res += `
+            {
+                vec3 shd1[3];
+                ${deg2 ? `vec3 shd2[5];` : ``}
+                fetchSH(splatIndex, shd1${deg2 ? `, shd2` : ``});
+
+                vec3 worldViewDir = normalize(splatCenter - cameraPosition);
+                float x = worldViewDir.x;
+                float y = worldViewDir.y;
+                float z = worldViewDir.z;
+                splatColor.rgb += SH_C1 * (-shd1[0] * y + shd1[1] * z - shd1[2] * x);
+
+                ${deg2 ? `
+                float xx = x * x;
+                float yy = y * y;
+                float zz = z * z;
+                float xy = x * y;
+                float yz = y * z;
+                float xz = x * z;
+
+                splatColor.rgb += (SH_C2[0] * xy) * shd2[0] + (SH_C2[1] * yz) * shd2[1] + (SH_C2[2] * (2.0 * zz - xx - yy)) * shd2[2]
+                        + (SH_C2[3] * xz) * shd2[3] + (SH_C2[4] * (xx - yy)) * shd2[4];
+                ` : ``}
+            }`
+        }
+        return res;
+    }
 }
