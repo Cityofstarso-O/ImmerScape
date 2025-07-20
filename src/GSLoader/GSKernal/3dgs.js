@@ -173,6 +173,7 @@ export class GSKernel_3DGS {
             for (let i = 0;i < pointCount; ++i) {
                 GSKernel_3DGS.parseSplatFromData(i, splat, dataview);
 
+                // TODO: pack fp16
                 pospadView.setFloat32(pospadOffset + 0, splat.x, true);
                 pospadView.setFloat32(pospadOffset + 4, splat.y, true);
                 pospadView.setFloat32(pospadOffset + 8, splat.z, true);
@@ -223,6 +224,7 @@ export class GSKernel_3DGS {
                 data: {
                     buffers: buffers,
                     gsType: 'ThreeD',
+                    num: pointCount,
                 },
             }
         }

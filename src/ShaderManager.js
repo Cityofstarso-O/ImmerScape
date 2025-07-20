@@ -38,8 +38,6 @@ export class ShaderManager {
         this.programs = new Map();
         this.uniforms = new Map();
         this.attributes = new Map();
-
-        this.enableShaderCache = true;
     }
 
     async onBuffersReady({ data, sceneName }) {
@@ -53,8 +51,8 @@ export class ShaderManager {
         }
         const vs = this.createVS(data.buffers, gsKernel);
         const fs = this.createFS();
-        console.log(vs);
-        console.log(fs);
+        //console.log(vs);
+        //console.log(fs);
         this.createProgram('123', vs, fs);
     }
 

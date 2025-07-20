@@ -1,6 +1,15 @@
 import { Quaternion, Matrix3, Matrix4, DataUtils } from '../external/three.module.js';
 
 export class Utils {
+    static DefaultSplatSortDistanceMapPrecision = 16;
+    static MemoryPageSize = 65536;
+    static BytesPerFloat = 4;
+    static BytesPerInt = 4;
+    static MaxScenes = 32;
+    static ProgressiveLoadSectionSize = 262144;
+    static ProgressiveLoadSectionDelayDuration = 15;
+    static SphericalHarmonics8BitCompressionRange = 3;
+
     static f2fp162uint16 = DataUtils.toHalfFloat.bind(DataUtils);
     static uint162fp162f = DataUtils.fromHalfFloat.bind(DataUtils);
 
@@ -87,5 +96,23 @@ export class Utils {
         const fileNameWithExtension = fileName.split('/').pop().split('\\').pop();
         const name = fileNameWithExtension.split('.').slice(0, -1).join('.');
         return name;
+    }
+
+    static isIOS() {
+        const ua = navigator.userAgent;
+        return ua.indexOf('iPhone') > 0 || ua.indexOf('iPad') > 0;
+    }
+
+    static getIOSSemever() {
+        if (isIOS()) {
+            const extract = navigator.userAgent.match(/OS (\d+)_(\d+)_?(\d+)?/);
+            return new Semver(
+                parseInt(extract[1] || 0, 10),
+                parseInt(extract[2] || 0, 10),
+                parseInt(extract[3] || 0, 10)
+            );
+        } else {
+            return null; // or [0,0,0]
+        }
     }
 }
