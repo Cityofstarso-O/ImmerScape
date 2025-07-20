@@ -1,18 +1,21 @@
 import { Utils } from "./Utils.js";
 
 export class GSScene {
-    constructor(eventBus, graphicsAPI) {
+    constructor(options, eventBus, graphicsAPI) {
         this.eventBus = eventBus;
         this.eventBus.on('buffersReady', this.onBuffersReady.bind(this));
         this.scenes = {};
+        this.currentScene = null;
         this.graphicsAPI = graphicsAPI;
 
-        this.destroyBufOnSetupTex = false;
+        this.destroyBufOnSetupTex = options.destroyBufOnSetupTex;
     }
 
     async onBuffersReady({ data, sceneName }) {
+        // TODO: now we only support single scene
         this.scenes[sceneName] = data;
         this.setupTex(sceneName);
+        this.currentScene = sceneName;
         GSScene.debugUnpackBuffer(data.buffers, 0);
         GSScene.debugUnpackBuffer(data.buffers, 1);
         GSScene.debugUnpackBuffer(data.buffers, 2);
@@ -26,6 +29,13 @@ export class GSScene {
             }
         });
         console.log(this.scenes[sceneName])
+    }
+
+    getSplatNum() {
+        if (this.currentScene && this.scenes[this.currentScene]) {
+            return this.scenes[this.currentScene].num;
+        }
+        return 0;
     }
 
     static debugUnpackBuffer(buffers, idx = 0) {
