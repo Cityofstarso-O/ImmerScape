@@ -12,8 +12,7 @@ import * as THREE from "../../external/three.module.js"
 export class GSViewer {
     constructor() {
         this.canvas = document.getElementById('drop-zone');
-
-        this.webgl = new WebGL(this.canvas);
+        this.graphicsAPI = new WebGL(this.canvas);
         this.eventBus = new EventBus();
         this.options = {
             integerBasedSort: true,
@@ -31,9 +30,8 @@ export class GSViewer {
         this.resolveOptions();
 
         this.devicePixelRatio = window.devicePixelRatio;
-        this.width = this.canvas.clientWidth * this.devicePixelRatio;
-        this.height = this.canvas.clientHeight * this.devicePixelRatio;
-        this.aspect = this.canvas.clientWidth / this.canvas.clientHeight;
+        this.canvas.width = this.canvas.clientWidth * this.devicePixelRatio;
+        this.canvas.height = this.canvas.clientHeight * this.devicePixelRatio;
         this.perspectiveCamera = null;
         this.orthographicCamera = null;
         this.camera = null;
@@ -56,15 +54,12 @@ export class GSViewer {
 
         this.setupCamera();
         this.setupControls();
-
-        this.run();
     }
 
     run() {
         const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
         const animate = async () => {
-            await wait(500)
             requestAnimationFrame(animate);
             if (this.controls) {
                 this.controls.update();
@@ -72,13 +67,53 @@ export class GSViewer {
                     GSViewer.setCameraPositionFromZoom(this.camera, this.camera, this.controls);
                 }
             }
-
             this.runSplatSort();
+            this.updateForRendererSizeChanges();
 
+            if (this.shouldRender()) {
+                // TODO: bind instance index buffer
+                this.graphicsAPI.updateViewport();
+                this.graphicsAPI.updateClearColor();
+                this.shaderManager.setPipelineAndBind();
+                this.graphicsAPI.drawInstanced('TRIANGLE_FAN', 0, 4, this.gsScene.getSplatNum());
+            }
         }
 
         animate();
     }
+
+    shouldRender() {
+        return this.gsScene.currentScene && this.sorter.initialized && this.shaderManager.key;
+    }
+
+    updateForRendererSizeChanges = function() {
+
+        const lastRendererSize = new THREE.Vector2();
+        const currentRendererSize = new THREE.Vector2();
+        let lastCameraOrthographic;
+
+        return function() {
+            currentRendererSize.x = Math.round(this.canvas.clientWidth * this.devicePixelRatio);
+            currentRendererSize.y = Math.round(this.canvas.clientHeight * this.devicePixelRatio);
+
+            if (lastCameraOrthographic === undefined || lastCameraOrthographic !== this.camera.isOrthographicCamera ||
+                currentRendererSize.x !== lastRendererSize.x || currentRendererSize.y !== lastRendererSize.y) {
+                this.canvas.width = currentRendererSize.x;
+                this.canvas.height = currentRendererSize.y;
+                if (this.camera.isOrthographicCamera) {
+                    this.camera.left = -currentRendererSize.x / 2.0;
+                    this.camera.right = currentRendererSize.x / 2.0;
+                    this.camera.top = currentRendererSize.y / 2.0;
+                    this.camera.bottom = -currentRendererSize.y / 2.0;
+                } else {
+                    this.camera.aspect = currentRendererSize.x / currentRendererSize.y;
+                }
+                this.camera.updateProjectionMatrix();
+                lastRendererSize.copy(currentRendererSize);
+                lastCameraOrthographic = this.camera.isOrthographicCamera;
+            }
+        };
+    }();
 
     runSplatSort = function() {
 
@@ -147,6 +182,7 @@ export class GSViewer {
 
             let gpuAcceleratedSortPromise = Promise.resolve(true);
             if (this.options.gpuAcceleratedSort && (queuedSorts.length <= 1 || queuedSorts.length % 2 === 0)) {
+                // TODO: may use gpu in the future if cpu sort is too slow
                 gpuAcceleratedSortPromise = this.splatMesh.computeDistancesOnGPU(mvpMatrix, this.sortWorkerPrecomputedDistances);
             }
 

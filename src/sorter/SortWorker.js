@@ -65,7 +65,8 @@ function sort(splatSortCount, splatRenderCount, modelViewProj,
     }
     const sortEndTime = performance.now();
     sortMessage.sortTime = sortEndTime - sortStartTime;
-    console.log(sortMessage, new Int32Array(wasmMemory, indexesToSortOffset, 10), new Int32Array(wasmMemory, mappedDistancesOffset, 10))
+    console.log(sortMessage, new Int32Array(wasmMemory, indexesToSortOffset, 10), new Int32Array(wasmMemory, mappedDistancesOffset, 10)
+        ,new Float32Array(wasmMemory, modelViewProjOffset, 16))
     self.postMessage(sortMessage);
 }
 

@@ -5,7 +5,7 @@ export class GSScene {
         this.eventBus = eventBus;
         this.eventBus.on('buffersReady', this.onBuffersReady.bind(this));
         this.scenes = {};
-        this.currentScene = null;
+        this.currentScene = '';
         this.graphicsAPI = graphicsAPI;
 
         this.destroyBufOnSetupTex = options.destroyBufOnSetupTex;
