@@ -35,9 +35,100 @@ export class ShaderManager {
         this.eventBus = eventBus;
         this.eventBus.on('buffersReady', this.onBuffersReady.bind(this));
         this.graphicsAPI = graphicsAPI;
-        this.programs = new Map();
-        this.uniforms = new Map();
-        this.attributes = new Map();
+        this.programs = {};
+        this.uniforms = {};
+        this.attributes = {};
+        this.vars = {
+            'projectionMatrix': {
+                'value': new Float32Array(16),
+                'type': 'Matrix4fv',
+                'update': true,
+            },
+            'viewMatrix': {
+                'value': new Float32Array(16),
+                'type': 'Matrix4fv',
+                'update': true,
+            },
+            'cameraPosition': {
+                'value': [0, 0, 0],
+                'type': '3fv',
+                'update': true,
+            },
+            'inverseFocalAdjustment': {
+                'value': 1.0,
+                'type': '1f',
+                'update': true,
+            },
+            'focal': {
+                'value': [0, 0],
+                'type': '2fv',
+                'update': true,
+            },
+            'basisViewport': {
+                'value': [0, 0],
+                'type': '2fv',
+                'update': true,
+            },
+            'orthoZoom': {
+                'value': 1.0,
+                'type': '1f',
+                'update': true,
+            },
+            'orthographicMode': {
+                'value': 0,
+                'type': '1i',
+                'update': true,
+            },
+            'splatCount': {
+                'value': 0,
+                'type': '1i',
+                'update': true,
+            },
+            'splatScale': {
+                'value': 1.0,
+                'type': '1f',
+                'update': true,
+            },
+            'sceneScale': {
+                'value': 1.0,
+                'type': '1f',
+                'update': true,
+            },
+            'frustumDilation': {
+                'value': 0.0,
+                'type': '1f',
+                'update': true,
+            },
+            'alphaCullThreshold': {
+                'value': 0.0,
+                'type': '1f',
+                'update': true,
+            }
+        };
+        this.vertexInput = {}
+
+        this.key = '';
+    }
+
+    updateUniform(name, value) {
+        if (this.vars[name]) {
+            this.vars[name].value = value;
+            this.vars[name].update = true;
+        } else {
+            console.warn('ShaderManager: No such vars: ', name);
+        }
+    }
+
+    updateUniforms(force = false) {
+        for (const [key, value] of Object.entries(this.vars)) {
+            if (force || value.update) {
+                this.graphicsAPI.updateUniform(this.uniforms[this.key][key], value.type, value.value);
+            }
+        }
+    }
+
+    updateInstanceIndexBuffer(indexArray) {
+        this.graphicsAPI.updateBuffer(this.vertexInput.instanceIndexBuffer, indexArray);
     }
 
     async onBuffersReady({ data, sceneName }) {
@@ -53,7 +144,10 @@ export class ShaderManager {
         const fs = this.createFS();
         //console.log(vs);
         //console.log(fs);
-        this.createProgram('123', vs, fs);
+        const key = data.gsType;
+        this.createProgram(key, vs, fs);
+        this.vertexInput = this.graphicsAPI.setupVAO(this.getAttribLoc(key, 'inPosition'), this.getAttribLoc(key, 'splatIndex'), data.num);
+        this.key = key;
     }
 
     createVS(buffers, gsKernel) {
@@ -188,53 +282,55 @@ export class ShaderManager {
         if (!program) {
             console.error(`Fail to create program for ${key}`);
         }
-        this.programs.set(key, program);
+        this.programs[key] = program;
         this.cacheLocations(key, program);
     }
 
-    useProgram(key) {
-        const program = this.programs.get(key);
+    setPipelineAndBind(key = null) {
+        key = key || this.key;
+        const program = this.programs[key];
         if (!program) {
             console.warn(`Program "${key}" not found.`);
             return;
         }
-        this.gl.useProgram(program);
+        this.graphicsAPI.updateProgram(program);
+        this.graphicsAPI.updateVertexInput(this.vertexInput.vao);
     }
 
-    getUniformLocation(key, name) {
-        const locMap = this.uniforms.get(key);
+    getUniformLoc(key, name) {
+        const locMap = this.uniforms[key];
         if (!locMap) return null;
         return locMap[name] || null;
     }
 
-    getAttribLocation(key, name) {
-        const locMap = this.attributes.get(key);
+    getAttribLoc(key, name) {
+        const locMap = this.attributes[key];
         if (!locMap) return -1;
         return locMap[name] !== undefined ? locMap[name] : -1;
     }
 
     getUniformMap(key) {
-        const locMap = this.uniforms.get(key);
+        const locMap = this.uniforms[key];
         if (!locMap) return null;
         return locMap || null;
     }
 
     getAttribMap(key) {
-        const locMap = this.attributes.get(key);
+        const locMap = this.attributes[key];
         if (!locMap) return -1;
         return locMap !== undefined ? locMap : -1;
     }
 
     deleteProgram(key) {
-        const program = this.programs.get(key);
+        const program = this.programs[key];
         this.graphicsAPI.deleteProgram(program);
-        this.programs.delete(key);
-        this.uniforms.delete(key);
-        this.attributes.delete(key);
+        this.programs[key] = null;
+        this.uniforms[key] = null;
+        this.attributes[key] = null;
     }
 
     deleteAllProgram() {
-        const keys = Array.from(this.programs.keys());
+        const keys = Object.keys(this.programs);
 
         for (const key of keys) {
             this.deleteProgram(key);
@@ -242,9 +338,8 @@ export class ShaderManager {
     }
 
     cacheLocations(key) {
-        const program = this.programs.get(key);
-
-        this.uniforms.set(key, this.graphicsAPI.getUniform(program));
-        this.attributes.set(key, this.graphicsAPI.getAttrib(program));
+        const program = this.programs[key];
+        this.uniforms[key] = this.graphicsAPI.getUniform(program);
+        this.attributes[key] = this.graphicsAPI.getAttrib(program);
     }
 }

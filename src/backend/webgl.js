@@ -8,6 +8,43 @@ export class WebGL {
         GlobalVars.graphicsAPI = GraphicsApiType.WEBGL;
     }
 
+    updateViewport(offset = null, size = null) {
+        const gl = this.graphicsAPI;
+        offset = offset || { x: 0, y: 0 };
+        size = size || { x: gl.canvas.width, y: gl.canvas.height };
+        gl.viewport(offset.x, offset.y, size.x, size.y);
+    }
+
+    updateClearColor(r = 0, g = 0, b = 0, a = 1) {
+        const gl = this.graphicsAPI;
+        gl.clearColor(r, g, b, a);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+    }
+
+    updateBuffer(buffer, data) {
+        const gl = this.graphicsAPI;
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, data);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    }
+
+    updateUniform(loc, type, value) {
+        this.graphicsAPI['uniform' + type](loc, value);
+    }
+
+    updateProgram(program) {
+        this.graphicsAPI.useProgram(program);
+    }
+
+    updateVertexInput(v) {
+        this.graphicsAPI.bindVertexArray(v);
+    }
+
+    drawInstanced(primitive, offset, num, instanceCount) {
+        const gl = this.graphicsAPI;
+        gl.drawArraysInstanced(gl[primitive], offset, num, instanceCount);
+    }
+
     setupTexture = function() {
         // a little hack, we only take common formats into account
         const glType = {
@@ -66,6 +103,41 @@ export class WebGL {
             desc.texture = texture;
         }
     }();
+
+    setupVAO(vertexPosLocation, instanceIndexLocation, splatCount) {
+        const gl = this.graphicsAPI;
+        const vertexPositions = new Float32Array([
+            -1.0, -1.0, 0.0, 1.0, -1.0, 0.0, 1.0, 1.0, 0.0, -1.0, 1.0, 0.0
+        ]);
+        const vertexPosBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexPosBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, vertexPositions, gl.STATIC_DRAW);
+
+        const instanceIndexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, instanceIndexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, splatCount * Uint32Array.BYTES_PER_ELEMENT, gl.DYNAMIC_DRAW);
+
+        const vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexPosBuffer);
+        gl.enableVertexAttribArray(vertexPosLocation);
+        gl.vertexAttribPointer(vertexPosLocation, 3, gl.FLOAT, false, 0, 0);
+            
+        gl.bindBuffer(gl.ARRAY_BUFFER, instanceIndexBuffer);
+        gl.enableVertexAttribArray(instanceIndexLocation);
+        gl.vertexAttribIPointer(instanceIndexLocation, 1, gl.UNSIGNED_INT, 0, 0);
+        gl.vertexAttribDivisor(instanceIndexLocation, 1);
+
+        gl.bindVertexArray(null);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+        return {
+            'vao': vao,
+            'vertexPosBuffer': vertexPosBuffer,
+            'instanceIndexBuffer': instanceIndexBuffer,
+        };
+    }
 
     setupProgram(vsSrc, fsSrc) {
         const gl = this.graphicsAPI;

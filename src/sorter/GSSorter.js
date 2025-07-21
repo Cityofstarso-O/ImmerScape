@@ -5,7 +5,7 @@ export class GSSorter {
         this.integerBasedSort = options.integerBasedSort;
         this.sharedMemoryForWorkers = options.sharedMemoryForWorkers;
         this.enableSIMDInSort = options.enableSIMDInSort;
-        this.gpuAcceleratedSort = true || options.gpuAcceleratedSort;
+        this.gpuAcceleratedSort = options.gpuAcceleratedSort;
 
         this.worker = new Worker(new URL('SortWorker.js', import.meta.url), { type: 'module' });
         this.sourceWasm = '';
