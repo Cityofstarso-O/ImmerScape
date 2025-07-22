@@ -115,4 +115,34 @@ export class Utils {
             return null; // or [0,0,0]
         }
     }
+
+    /**
+     * 综合检测当前设备是否为移动端。
+     * 优先使用 navigator.userAgentData，其次是CSS媒体查询，最后回退到User Agent字符串。
+     * @returns {boolean} 如果是移动设备则返回true，否则返回false。
+     */
+    static isMobile() {
+        // 1. 优先使用最新的 User-Agent Client Hints API
+        if (navigator.userAgentData) {
+            return navigator.userAgentData.mobile;
+        }
+
+        // 2. 其次，使用CSS媒体查询的组合判断
+        // 检查主要输入设备是否为手指，且不支持悬停
+        const hasCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+        const lacksHoverSupport = window.matchMedia('(hover: none)').matches;
+        if (hasCoarsePointer && lacksHoverSupport) {
+            return true;
+        }
+
+        // 检查是否有精密的指针（鼠标），如果有，则不太可能是手机
+        const hasFinePointer = window.matchMedia('(pointer: fine)').matches;
+        if (hasFinePointer) {
+            return false;
+        }
+
+        // 3. 作为最后的备用方案，使用传统的User Agent字符串检查
+        // （虽然不完美，但能覆盖一些边缘情况）
+        return /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(navigator.userAgent.toLowerCase());
+    }
 }

@@ -60,4 +60,34 @@ export class GSLoader {
         this.sendTime = 0;
         this.recvTime = 0;
     }
+
+    /**
+     * 从本地服务器异步读取文件。
+     * @param {string} filePath - 相对于HTML文件的文件路径，例如 './shaders/vertex.glsl'。
+     * @param {string} [type='text'] - 您期望的文件格式。可选值: 'text', 'json', 'blob', 'arrayBuffer'。
+     * @returns {Promise<string|object|Blob|ArrayBuffer|null>} - 返回一个包含文件内容的Promise，如果失败则返回null。
+     */
+    async readFileFromServer(filePath) {
+        try {
+            const response = await fetch(filePath);
+
+            if (!response.ok) {
+                throw new Error(`无法找到文件: ${filePath} - 状态: ${response.status} ${response.statusText}`);
+            }
+            const content = await response.arrayBuffer();
+            console.log(`send file ${this.currentFile} to worker`);
+            this.currentFile = filePath;
+            this.sendTime = performance.now();
+            this.worker.postMessage({
+                'type': LoadType.NATIVE,
+                'parser': ParserType.CPU,
+                'name': this.currentFile,
+                'data': content,
+            }, [content]);
+            
+        } catch (error) {
+            console.error(`读取文件时发生错误: ${error.message}`);
+            return null;
+        }
+    }
 }

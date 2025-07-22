@@ -1,5 +1,5 @@
 .vscode
-*.ply
+./*.ply
 TODO
 test
 test.html
