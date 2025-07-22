@@ -17,16 +17,19 @@ export class GSScene {
         this.setupTex(sceneName);
         this.currentScene = sceneName;
         GSScene.debugUnpackBuffer(data.buffers, 0);
-        GSScene.debugUnpackBuffer(data.buffers, 1);
-        GSScene.debugUnpackBuffer(data.buffers, 2);
+        //GSScene.debugUnpackBuffer(data.buffers, 1);
+        //GSScene.debugUnpackBuffer(data.buffers, 2);
     }
 
     setupTex(sceneName) {
+        let bindIndex = 0;
         Object.values(this.scenes[sceneName].buffers).forEach(value => {
+            value.bind = bindIndex;
             this.graphicsAPI.setupTexture(value);
             if (this.destroyBufOnSetupTex) {
                 value.buffer = null;
             }
+            ++bindIndex;
         });
         console.log(this.scenes[sceneName])
     }
@@ -36,6 +39,10 @@ export class GSScene {
             return this.scenes[this.currentScene].num;
         }
         return 0;
+    }
+
+    getBuffers() {
+        return this.scenes[this.currentScene].buffers;
     }
 
     static debugUnpackBuffer(buffers, idx = 0) {

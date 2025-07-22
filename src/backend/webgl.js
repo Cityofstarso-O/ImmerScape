@@ -28,8 +28,21 @@ export class WebGL {
         gl.bindBuffer(gl.ARRAY_BUFFER, null);
     }
 
-    updateUniform(loc, type, value) {
-        this.graphicsAPI['uniform' + type](loc, value);
+    getBufferData(tf) {
+        const gl = this.graphicsAPI;
+        gl.bindBuffer(gl.ARRAY_BUFFER, tf.buffer);
+        const capturedData = new Float32Array(tf.size / Float32Array.BYTES_PER_ELEMENT);
+        gl.getBufferSubData(gl.ARRAY_BUFFER, 0, capturedData);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+        return capturedData;
+    }
+
+    updateUniform(loc, type, value, transpose = null) {
+        if (transpose !== null) {
+            this.graphicsAPI['uniform' + type](loc, transpose, value);
+        } else {
+            this.graphicsAPI['uniform' + type](loc, value);
+        }
     }
 
     updateProgram(program) {
@@ -40,9 +53,21 @@ export class WebGL {
         this.graphicsAPI.bindVertexArray(v);
     }
 
-    drawInstanced(primitive, offset, num, instanceCount) {
+    drawInstanced(primitive, offset, num, instanceCount, transformFeedback = null) {
         const gl = this.graphicsAPI;
-        gl.drawArraysInstanced(gl[primitive], offset, num, instanceCount);
+        if (!transformFeedback){
+            gl.drawArraysInstanced(gl[primitive], offset, num, instanceCount);
+            return;
+        }
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, transformFeedback.tf);
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, transformFeedback.buffer);
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.beginTransformFeedback(gl.POINTS);
+        gl.drawArraysInstanced(gl.POINTS, offset, num, instanceCount);
+        gl.endTransformFeedback();
+        gl.disable(gl.RASTERIZER_DISCARD);
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
     }
 
     setupTexture = function() {
@@ -77,8 +102,9 @@ export class WebGL {
 
         return function(desc) {
             const gl = this.graphicsAPI;
-
+            console.log(desc)
             const texture = gl.createTexture();
+            gl.activeTexture(gl.TEXTURE0 + desc.bind);
             gl.bindTexture(gl.TEXTURE_2D, texture);
 
             const {format, type} = getFormatType(desc.format);
@@ -139,7 +165,7 @@ export class WebGL {
         };
     }
 
-    setupProgram(vsSrc, fsSrc) {
+    setupProgram(vsSrc, fsSrc, feedbackVaryings = null) {
         const gl = this.graphicsAPI;
 
         const vertexShader = this.compileShader(gl.VERTEX_SHADER, vsSrc);
@@ -152,6 +178,11 @@ export class WebGL {
         const program = gl.createProgram();
         gl.attachShader(program, vertexShader);
         gl.attachShader(program, fragmentShader);
+
+        if (feedbackVaryings && feedbackVaryings.length > 0) {
+            gl.transformFeedbackVaryings(program, feedbackVaryings, gl.INTERLEAVED_ATTRIBS);
+        }
+
         gl.linkProgram(program);
 
         if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
@@ -164,6 +195,20 @@ export class WebGL {
         gl.deleteShader(fragmentShader);
 
         return program;
+    }
+
+    setupTransformFeedback(size) {
+        const gl = this.graphicsAPI;
+        const tf = gl.createTransformFeedback();
+        const feedbackBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, feedbackBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, size, gl.DYNAMIC_READ);
+        gl.bindVertexArray(null);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+        return {
+            tranformFeedback: tf,
+            buffer: feedbackBuffer,
+        };
     }
 
     compileShader(type, source) {
