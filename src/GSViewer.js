@@ -92,6 +92,7 @@ export class GSViewer {
         return function() {
             const res = this.gsScene.currentScene && this.sorter.initialized && this.shaderManager.key;
             if (res && !isSet) {
+                this.graphicsAPI.setBlendState();
                 this.shaderManager.setPipelineAndBind();
                 this.shaderManager.updateUniformTextures(this.gsScene.getBuffers());
             }
