@@ -70,6 +70,19 @@ export class WebGL {
         gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
     }
 
+    setBlendState() {
+        const gl = this.graphicsAPI;
+        gl.enable(gl.BLEND);
+        gl.blendEquationSeparate(gl.FUNC_ADD, gl.FUNC_ADD);
+
+        gl.blendFuncSeparate(
+            gl.SRC_ALPHA,              // color.srcFactor
+            gl.ONE_MINUS_SRC_ALPHA,    // color.dstFactor
+            gl.ONE,              // alpha.srcFactor
+            gl.ONE_MINUS_SRC_ALPHA     // alpha.dstFactor
+        );
+    }
+
     setupTexture = function() {
         // a little hack, we only take common formats into account
         const glType = {

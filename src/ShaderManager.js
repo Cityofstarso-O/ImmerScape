@@ -147,10 +147,11 @@ export class ShaderManager {
         const capturedData = this.graphicsAPI.getBufferData(this.debugTF);
 
         console.log("--- Captured Vertex Positions (from GPU) ---");
-        console.log(`debugOutput 0: ${capturedData[0].toFixed(3)}, ${capturedData[1].toFixed(3)}, ${capturedData[2].toFixed(3)}, ${capturedData[3].toFixed(3)}`);
-        console.log(`debugOutput 1: ${capturedData[4].toFixed(3)}, ${capturedData[5].toFixed(3)}, ${capturedData[6].toFixed(3)}, ${capturedData[7].toFixed(3)}`);
-        console.log(`debugOutput 2: ${capturedData[8].toFixed(3)}, ${capturedData[9].toFixed(3)}, ${capturedData[10].toFixed(3)}, ${capturedData[11].toFixed(3)}`);
-        console.log(`debugOutput 4: ${capturedData[12].toFixed(3)}, ${capturedData[13].toFixed(3)}, ${capturedData[14].toFixed(3)}, ${capturedData[15].toFixed(3)}`);
+        for (let i = 0;i<1;++i) {
+            const base = i * 16;
+            console.log(`debugOutput 0: ${capturedData[base+0].toFixed(3)}, ${capturedData[base+1].toFixed(3)}, ${capturedData[base+2].toFixed(3)}, ${capturedData[base+3].toFixed(3)}`);
+        }
+
     }
 
     onSortDone(indexArray) {
@@ -289,7 +290,7 @@ export class ShaderManager {
                 gl_Position        = quadPos;
 
                 ${this.debug ? `
-                debugOutput = vec4(0, 1, 2, 3);
+                debugOutput = vec4(splatColor.rgb, splatIndex);
                 ` : ``};
             }
         `;
