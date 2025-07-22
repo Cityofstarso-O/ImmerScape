@@ -31,9 +31,18 @@ export class ShaderManager {
         const float[5] SH_C2 = float[](1.0925484, -1.0925484, 0.3153916, -1.0925484, 0.5462742);
     `
 
-    constructor(eventBus, graphicsAPI) {
+    constructor(options, eventBus, graphicsAPI) {
+        this.debug = options.debug;
+        this.debugTF = {
+            outName: 'debugOutput',
+            tf: null,
+            buffer: null,
+            size: 0,
+        };
+
         this.eventBus = eventBus;
         this.eventBus.on('buffersReady', this.onBuffersReady.bind(this));
+        this.eventBus.on('sortDone', this.onSortDone.bind(this));
         this.graphicsAPI = graphicsAPI;
         this.programs = {};
         this.uniforms = {};
@@ -42,11 +51,13 @@ export class ShaderManager {
             'projectionMatrix': {
                 'value': new Float32Array(16),
                 'type': 'Matrix4fv',
+                'transpose': false,
                 'update': true,
             },
             'viewMatrix': {
                 'value': new Float32Array(16),
                 'type': 'Matrix4fv',
+                'transpose': false,
                 'update': true,
             },
             'cameraPosition': {
@@ -64,7 +75,7 @@ export class ShaderManager {
                 'type': '2fv',
                 'update': true,
             },
-            'basisViewport': {
+            'invViewport': {
                 'value': [0, 0],
                 'type': '2fv',
                 'update': true,
@@ -106,7 +117,6 @@ export class ShaderManager {
             }
         };
         this.vertexInput = {}
-
         this.key = '';
     }
 
@@ -119,15 +129,31 @@ export class ShaderManager {
         }
     }
 
+    updateUniformTextures(buffers) {
+        Object.values(buffers).forEach(value => {
+            this.graphicsAPI.updateUniform(this.uniforms[this.key][value.name], '1i', value.bind);
+        });
+    }
+
     updateUniforms(force = false) {
         for (const [key, value] of Object.entries(this.vars)) {
             if (force || value.update) {
-                this.graphicsAPI.updateUniform(this.uniforms[this.key][key], value.type, value.value);
+                this.graphicsAPI.updateUniform(this.uniforms[this.key][key], value.type, value.value, value.transpose);
             }
         }
     }
 
-    updateInstanceIndexBuffer(indexArray) {
+    debugLog() {
+        const capturedData = this.graphicsAPI.getBufferData(this.debugTF);
+
+        console.log("--- Captured Vertex Positions (from GPU) ---");
+        console.log(`debugOutput 0: ${capturedData[0].toFixed(3)}, ${capturedData[1].toFixed(3)}, ${capturedData[2].toFixed(3)}, ${capturedData[3].toFixed(3)}`);
+        console.log(`debugOutput 1: ${capturedData[4].toFixed(3)}, ${capturedData[5].toFixed(3)}, ${capturedData[6].toFixed(3)}, ${capturedData[7].toFixed(3)}`);
+        console.log(`debugOutput 2: ${capturedData[8].toFixed(3)}, ${capturedData[9].toFixed(3)}, ${capturedData[10].toFixed(3)}, ${capturedData[11].toFixed(3)}`);
+        console.log(`debugOutput 4: ${capturedData[12].toFixed(3)}, ${capturedData[13].toFixed(3)}, ${capturedData[14].toFixed(3)}, ${capturedData[15].toFixed(3)}`);
+    }
+
+    onSortDone(indexArray) {
         this.graphicsAPI.updateBuffer(this.vertexInput.instanceIndexBuffer, indexArray);
     }
 
@@ -140,17 +166,24 @@ export class ShaderManager {
             default:
                 break;
         }
-        const vs = this.createVS(data.buffers, gsKernel);
+        const vs = this.createVS(data.buffers, gsKernel, this.debug);
         const fs = this.createFS();
         //console.log(vs);
         //console.log(fs);
         const key = data.gsType;
-        this.createProgram(key, vs, fs);
+        this.createProgram(key, vs, fs, this.debug ? [this.debugTF.outName] : null);
         this.vertexInput = this.graphicsAPI.setupVAO(this.getAttribLoc(key, 'inPosition'), this.getAttribLoc(key, 'splatIndex'), data.num);
         this.key = key;
+        if (this.debug) {
+            const size = data.num * 4 * 4 * 4;
+            const { tf, buffer } = this.graphicsAPI.setupTransformFeedback(size);
+            this.debugTF.tf = tf;
+            this.debugTF.buffer = buffer;
+            this.debugTF.size = size;
+        }
     }
 
-    createVS(buffers, gsKernel) {
+    createVS(buffers, gsKernel, debug = false) {
         let vs = `#version 300 es 
             precision highp float;
         `
@@ -169,7 +202,7 @@ export class ShaderManager {
             uniform vec3 cameraPosition;
             uniform float inverseFocalAdjustment;
             uniform vec2 focal;
-            uniform vec2 basisViewport;
+            uniform vec2 invViewport;
             uniform float orthoZoom;
             uniform int orthographicMode;
 
@@ -184,6 +217,7 @@ export class ShaderManager {
         vs += `
             out vec4 v_fragCol;
             out vec2 v_fragPos;
+            ${this.debug ? `out vec4 debugOutput;` : ``}
         `;
 
         vs += ShaderManager.shaderHelperFunc;
@@ -250,9 +284,13 @@ export class ShaderManager {
                 vec2 basisVector1 = eigenVector1 * splatScale * min(sqrt8 * sqrt(eigenValue1), 2048.0);
                 vec2 basisVector2 = eigenVector2 * splatScale * min(sqrt8 * sqrt(eigenValue2), 2048.0);
 
-                vec2 ndcOffset = vec2(fragPos.x * basisVector1 + fragPos.y * basisVector2) * basisViewport * 2.0 * inverseFocalAdjustment;
+                vec2 ndcOffset = vec2(fragPos.x * basisVector1 + fragPos.y * basisVector2) * invViewport * 2.0 * inverseFocalAdjustment;
                 vec4 quadPos = vec4(ndcCenter.xy + ndcOffset, ndcCenter.z, 1.0);
                 gl_Position        = quadPos;
+
+                ${this.debug ? `
+                debugOutput = vec4(0, 1, 2, 3);
+                ` : ``};
             }
         `;
 
@@ -276,8 +314,8 @@ export class ShaderManager {
         `
     }
 
-    createProgram(key, vsSrc, fsSrc) {
-        const program = this.graphicsAPI.setupProgram(vsSrc, fsSrc);
+    createProgram(key, vsSrc, fsSrc, capture = null) {
+        const program = this.graphicsAPI.setupProgram(vsSrc, fsSrc, capture);
 
         if (!program) {
             console.error(`Fail to create program for ${key}`);

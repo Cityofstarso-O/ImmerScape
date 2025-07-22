@@ -15,6 +15,7 @@ export class GSViewer {
         this.graphicsAPI = new WebGL(this.canvas);
         this.eventBus = new EventBus();
         this.options = {
+            debug: false,
             integerBasedSort: true,
             destroyBufOnSetupTex: false,
             sharedMemoryForWorkers: false,
@@ -48,8 +49,8 @@ export class GSViewer {
         this.splatSortCount = 0;
 
         this.gsloader = new GSLoader(this.eventBus);
-        this.gsScene = new GSScene(this.options, this.eventBus, this.webgl);
-        this.shaderManager = new ShaderManager(this.eventBus, this.webgl);
+        this.gsScene = new GSScene(this.options, this.eventBus, this.graphicsAPI);
+        this.shaderManager = new ShaderManager(this.options, this.eventBus, this.graphicsAPI);
         this.sorter = new GSSorter(this.options, this.eventBus);
 
         this.setupCamera();
@@ -57,9 +58,7 @@ export class GSViewer {
     }
 
     run() {
-        const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-        const animate = async () => {
+        const animate = () => {
             requestAnimationFrame(animate);
             if (this.controls) {
                 this.controls.update();
@@ -72,9 +71,15 @@ export class GSViewer {
 
             if (this.shouldRender()) {
                 // TODO: bind instance index buffer
+                this.updateUniforms();
                 this.graphicsAPI.updateViewport();
+
+                if (this.options.debug) {
+                    this.graphicsAPI.drawInstanced('TRIANGLE_FAN', 0, 4, this.gsScene.getSplatNum(), this.shaderManager.debugTF);
+                    this.shaderManager.debugLog();
+                }
+
                 this.graphicsAPI.updateClearColor();
-                this.shaderManager.setPipelineAndBind();
                 this.graphicsAPI.drawInstanced('TRIANGLE_FAN', 0, 4, this.gsScene.getSplatNum());
             }
         }
@@ -82,9 +87,18 @@ export class GSViewer {
         animate();
     }
 
-    shouldRender() {
-        return this.gsScene.currentScene && this.sorter.initialized && this.shaderManager.key;
-    }
+    shouldRender = function() {
+        let isSet = false;
+        return function() {
+            const res = this.gsScene.currentScene && this.sorter.initialized && this.shaderManager.key;
+            if (res && !isSet) {
+                this.shaderManager.setPipelineAndBind();
+                this.shaderManager.updateUniformTextures(this.gsScene.getBuffers());
+            }
+
+            return res;
+        }
+    }();
 
     updateForRendererSizeChanges = function() {
 
@@ -114,6 +128,19 @@ export class GSViewer {
             }
         };
     }();
+
+    updateUniforms() {
+        const projMat = this.camera.projectionMatrix.elements;
+        this.shaderManager.updateUniform('viewMatrix', this.camera.matrixWorldInverse.elements);
+        this.shaderManager.updateUniform('projectionMatrix', projMat);
+        this.shaderManager.updateUniform('cameraPosition', this.camera.position.toArray());
+        const focalX = projMat[0] * 0.5 * this.canvas.width;
+        const focalY = projMat[5] * 0.5 * this.canvas.height;
+        this.shaderManager.updateUniform('focal', [focalX, focalY]);
+        this.shaderManager.updateUniform('invViewport', [1 / this.canvas.width, 1 / this.canvas.height]);
+
+        this.shaderManager.updateUniforms();
+    }
 
     runSplatSort = function() {
 
@@ -164,7 +191,6 @@ export class GSViewer {
             angleDiff = sortViewDir.dot(lastSortViewDir);
             positionDiff = sortViewOffset.copy(this.camera.position).sub(lastSortViewPos).length();
 
-            console.log(angleDiff, positionDiff)
             if (!force) {
                 if (queuedSorts.length === 0) {
                     if (angleDiff <= 0.99) needsRefreshForRotation = true;

@@ -96,22 +96,12 @@ export class GSSorter {
             if (e.data.sortDone) {
                 this.sortRunning = false;
                 if (this.sharedMemoryForWorkers) {
-                    this.splatMesh.updateRenderIndexes(this.sortWorkerSortedIndexes, e.data.splatRenderCount);
+                    // TODO
                 } else {
                     const sortedIndexes = new Uint32Array(e.data.sortedIndexes.buffer, 0, e.data.splatRenderCount);
-                    this.splatMesh.updateRenderIndexes(sortedIndexes, e.data.splatRenderCount);
+                    this.eventBus.emit('sortDone', sortedIndexes);
                 }
-                this.lastSplatSortCount = this.splatSortCount;
                 this.lastSortTime = e.data.sortTime;
-                this.sortPromiseResolver();
-                this.sortPromiseResolver = null;
-                this.forceRenderNextFrame();
-                if (this.runAfterNextSort.length > 0) {
-                    this.runAfterNextSort.forEach((func) => {
-                        func();
-                    });
-                    this.runAfterNextSort.length = 0;
-                }
             } else if (e.data.sortCanceled) {
                 this.sortRunning = false;
             } else if (e.data.sortSetupPhase1Complete) {
