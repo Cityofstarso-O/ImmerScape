@@ -106,12 +106,12 @@ export class ShaderManager {
                 'update': true,
             },
             'frustumDilation': {
-                'value': 0.0,
+                'value': 0.1,
                 'type': '1f',
                 'update': true,
             },
             'alphaCullThreshold': {
-                'value': 0.0,
+                'value': 3 / 255,
                 'type': '1f',
                 'update': true,
             }
@@ -241,8 +241,11 @@ export class ShaderManager {
 
                 ${gsKernel.getSpecificCode(buffers)}
 
-                // alpha based culling
-                if(splatColor.a < alphaCullThreshold)
+                // culling
+                float clip = (1.0 + frustumDilation) * clipCenter.w;
+                if(abs(clipCenter.x) > clip || abs(clipCenter.y) > clip
+                    || clipCenter.z < -clipCenter.w || clipCenter.z > clipCenter.w
+                    || splatColor.a < alphaCullThreshold)
                 {
                     gl_Position = vec4(0.0, 0.0, 2.0, 1.0);
                     return;
@@ -290,7 +293,7 @@ export class ShaderManager {
                 gl_Position        = quadPos;
 
                 ${this.debug ? `
-                debugOutput = vec4(splatColor.rgb, splatIndex);
+                debugOutput = vec4(splatCenter, splatIndex);
                 ` : ``};
             }
         `;

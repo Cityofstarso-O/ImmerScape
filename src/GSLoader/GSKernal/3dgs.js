@@ -90,11 +90,18 @@ export class GSKernel_3DGS {
     static parseData2Buffers = function() {
         const config = {
             pospad: {
-                low: {
+                /*low: {
                     name: 'Pos6Pad2',
                     bytesPerTexel: 3 * 2 + 2,
                     texelPerSplat: 1,
                     format: "RGBA16F",
+                    array: 1,
+                },*/
+                low: {
+                    name: 'Pos12Pad4',
+                    bytesPerTexel: 3 * 4 + 4,
+                    texelPerSplat: 1,
+                    format: "RGBA32F",
                     array: 1,
                 },
                 medium: {
@@ -142,7 +149,7 @@ export class GSKernel_3DGS {
             },
         }
 
-        return function(pointCount, dataview, quality = 'meduim') {
+        return function(pointCount, dataview, quality = 'medium') {
             // a little hack, pointCount shouldn't be too large (<= 8,388,608)
             if (pointCount > 4096 * 2048) {
                 console.warn(`pointCount ${pointCount} is too large and is clamped to 8,388,608`);
@@ -173,11 +180,17 @@ export class GSKernel_3DGS {
             for (let i = 0;i < pointCount; ++i) {
                 GSKernel_3DGS.parseSplatFromData(i, splat, dataview);
 
-                // TODO: pack fp16
-                pospadView.setFloat32(pospadOffset + 0, splat.x, true);
-                pospadView.setFloat32(pospadOffset + 4, splat.y, true);
-                pospadView.setFloat32(pospadOffset + 8, splat.z, true);
-
+                if (pospad.bytesPerTexel == 8) {
+                    // TODO: test if using fp16 affects the quality, for now we dont use it
+                    pospadView.setUint16(pospadOffset + 0, Utils.f2fp162uint16(splat.x), true);
+                    pospadView.setUint16(pospadOffset + 2, Utils.f2fp162uint16(splat.y), true);
+                    pospadView.setUint16(pospadOffset + 4, Utils.f2fp162uint16(splat.z), true);
+                } else {
+                    pospadView.setFloat32(pospadOffset + 0, splat.x, true);
+                    pospadView.setFloat32(pospadOffset + 4, splat.y, true);
+                    pospadView.setFloat32(pospadOffset + 8, splat.z, true);
+                }
+                
                 Utils.computeCov3dPack2fp16(
                     splat.sx, splat.sy, splat.sz, splat.rx, splat.ry, splat.rz, splat.rw, 
                     covcolView, covcolOffset

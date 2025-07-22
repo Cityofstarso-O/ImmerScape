@@ -1,5 +1,6 @@
 import { GSType } from "../../Global.js";
 import { GSKernel_3DGS } from "../GSKernal/3dgs.js";
+import { Utils } from "../../Utils.js";
 
 export class PlyLoader {
     static splitHeaderAndData(arrayBuffer) {
@@ -17,7 +18,7 @@ export class PlyLoader {
         let res;
         switch (gsType) {
             case GSType.ThreeD:
-                res = GSKernel_3DGS.parseData2Buffers(pointCount, dataview);
+                res = GSKernel_3DGS.parseData2Buffers(pointCount, dataview, Utils.isMobile() ? 'low' : 'medium');
                 break;
             default:
                 res = {

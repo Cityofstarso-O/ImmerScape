@@ -58,6 +58,9 @@ export class GSViewer {
     }
 
     run() {
+        // TODO: this is just for show
+        this.gsloader.readFileFromServer('../samples/chair.ply');
+
         const animate = () => {
             requestAnimationFrame(animate);
             if (this.controls) {
@@ -259,7 +262,7 @@ export class GSViewer {
         }
 
         this.options.initialCameraPosition = new THREE.Vector3().fromArray(this.options.initialCameraPosition || [0, 0, -2]);
-        this.options.cameraUp = new THREE.Vector3().fromArray(this.options.cameraUp || [0, 1, 0]);
+        this.options.cameraUp = new THREE.Vector3().fromArray(this.options.cameraUp || [0, -1, 0]);
         this.options.initialCameraLookAt = new THREE.Vector3().fromArray(this.options.initialCameraLookAt || [0, 0, 0]);
         this.options.cameraFOV = this.options.cameraFOV || 50;
 
