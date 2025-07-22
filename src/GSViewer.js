@@ -59,7 +59,7 @@ export class GSViewer {
 
     run() {
         // TODO: this is just for show
-        this.gsloader.readFileFromServer('../samples/chair.ply');
+        this.gsloader.readFileFromServer('/src/samples/chair.ply');
 
         const animate = () => {
             requestAnimationFrame(animate);
