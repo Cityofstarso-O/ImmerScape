@@ -6,7 +6,7 @@ import { ShaderManager } from "./ShaderManager.js";
 import { GSSorter } from "./sorter/GSSorter.js";
 import { Utils } from "./Utils.js";
 import { OrbitControls } from './OrbitControls.js';
-import * as THREE from "../../external/three.module.js"
+import * as THREE from "./external/three.module.js"
 
 
 export class GSViewer {

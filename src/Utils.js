@@ -1,4 +1,4 @@
-import { Quaternion, Matrix3, Matrix4, DataUtils } from '../external/three.module.js';
+import { Quaternion, Matrix3, Matrix4, DataUtils } from './external/three.module.js';
 
 export class Utils {
     static DefaultSplatSortDistanceMapPrecision = 16;
