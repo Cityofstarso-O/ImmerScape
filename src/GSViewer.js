@@ -59,7 +59,7 @@ export class GSViewer {
 
     run() {
         // TODO: this is just for show
-        this.gsloader.readFileFromServer('https://cityofstarso-o.github.io/ImmerScape/samples/chair.ply');
+        //this.gsloader.readFileFromServer('https://cityofstarso-o.github.io/ImmerScape/samples/chair.ply');
 
         const animate = () => {
             requestAnimationFrame(animate);

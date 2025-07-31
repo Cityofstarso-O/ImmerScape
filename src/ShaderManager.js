@@ -1,5 +1,6 @@
 import { GSType } from "./Global.js";
 import { GSKernel_3DGS } from "./GSLoader/GSKernal/3dgs.js";
+import { GSKernel_SPACETIME } from "./GSLoader/GSKernal/spacetime.js";
 
 export class ShaderManager {
     static shaderHelperFunc = `
@@ -164,10 +165,13 @@ export class ShaderManager {
             case GSType.ThreeD:
                 gsKernel = GSKernel_3DGS;
                 break;
+            case GSType.SPACETIME:
+                gsKernel = GSKernel_SPACETIME;
+                break;
             default:
                 break;
         }
-        const vs = this.createVS(data.buffers, gsKernel, this.debug);
+        const vs = this.createVS(data.buffers, gsKernel);
         const fs = this.createFS();
         //console.log(vs);
         //console.log(fs);
@@ -184,7 +188,7 @@ export class ShaderManager {
         }
     }
 
-    createVS(buffers, gsKernel, debug = false) {
+    createVS(buffers, gsKernel) {
         let vs = `#version 300 es 
             precision highp float;
         `

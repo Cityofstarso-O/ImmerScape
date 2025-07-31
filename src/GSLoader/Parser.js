@@ -59,6 +59,7 @@ self.onmessage = (event) => {
                     error = 'Unknown parser type: ' + message.parser;
                     break;
             }
+            break;
         case LoadType.URL:
 
             return;
