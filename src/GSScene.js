@@ -16,7 +16,7 @@ export class GSScene {
         this.scenes[sceneName] = data;
         this.setupTex(sceneName);
         this.currentScene = sceneName;
-        GSScene.debugUnpackBuffer(data.buffers, 0);
+        //GSScene.debugUnpackBuffer(data.buffers, 0);
         //GSScene.debugUnpackBuffer(data.buffers, 1);
         //GSScene.debugUnpackBuffer(data.buffers, 2);
     }
