@@ -16,7 +16,6 @@ export class GSViewer {
         this.eventBus = new EventBus();
         this.options = {
             debug: false,
-            integerBasedSort: true,
             destroyBufOnSetupTex: false,
             sharedMemoryForWorkers: false,
             enableSIMDInSort: true,
