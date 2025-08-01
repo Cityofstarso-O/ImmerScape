@@ -15,6 +15,7 @@ let memsetZero;
 let sortedIndexesOut;
 let distanceMapRange;
 let uploadedSplatCount;
+let gsType;
 const Constants = {
     BytesPerFloat: 4,
     BytesPerInt: 4,
@@ -39,8 +40,9 @@ function sort(splatSortCount, splatRenderCount, modelViewProj,
     new Uint32Array(wasmMemory, frequenciesOffset, distanceMapRange).set(memsetZero);
     wasmInstance.exports.sortIndexes(indexesToSortOffset, centersOffset, precomputedDistancesOffset,
                                      mappedDistancesOffset, frequenciesOffset, modelViewProjOffset,
-                                     sortedIndexesOffset, distanceMapRange, splatSortCount, 
-                                     splatRenderCount, splatCount, usePrecomputedDistances);
+                                     sortedIndexesOffset, distanceMapRange, 0.0,
+                                     splatSortCount, splatRenderCount, splatCount, 
+                                     usePrecomputedDistances, gsType);
     const sortMessage = {
         'sortDone': true,
         'splatSortCount': splatSortCount,
@@ -86,8 +88,9 @@ self.onmessage = async (e) => {
         splatCount = data.splatCount;
         useSharedMemory = data.useSharedMemory;
         distanceMapRange = data.distanceMapRange;
+        gsType = data.gsType;
         uploadedSplatCount = 0;
-        const CENTERS_BYTES_PER_ENTRY = Constants.BytesPerInt * 4;
+        const CENTERS_BYTES_PER_ENTRY = data.centers.byteLength / splatCount;
         const matrixSize = 16 * Constants.BytesPerFloat;
         const memoryRequiredForIndexesToSort = splatCount * Constants.BytesPerInt;
         const memoryRequiredForCenters = splatCount * CENTERS_BYTES_PER_ENTRY;
@@ -141,8 +144,7 @@ self.onmessage = async (e) => {
 
         // update centers
         const centers = data.centers;
-        new Int32Array(wasmMemory, centersOffset + data.range.from * Constants.BytesPerInt * 4,
-                           data.range.count * 4).set(new Int32Array(centers));
+        new Int32Array(wasmMemory, centersOffset + data.range.from * Constants.BytesPerInt * 4).set(new Int32Array(centers));
         uploadedSplatCount = data.range.from + data.range.count;
 
         console.log('setup sort worker', data.sorterWasmUrl)

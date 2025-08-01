@@ -171,12 +171,13 @@ export class GSKernel_3DGS {
             pospad.buffer = new ArrayBuffer(pospad.width * pospad.height * pospad.bytesPerTexel);
             covcol.buffer = new ArrayBuffer(covcol.width * covcol.height * covcol.bytesPerTexel);
             sh.buffer = new ArrayBuffer(sh.width * sh.height * sh.bytesPerTexel);
+            const sortBuffer = new Int32Array(pointCount * 4);
 
             const pospadView = new DataView(pospad.buffer);
             const covcolView = new DataView(covcol.buffer);
             const shView = new DataView(sh.buffer);
             const splat = {...GSKernel_3DGS.params};
-            let pospadOffset = 0, covcolOffset = 0, shOffset = 0;
+            let pospadOffset = 0, covcolOffset = 0, shOffset = 0, sortOffset = 0;
             for (let i = 0;i < pointCount; ++i) {
                 GSKernel_3DGS.parseSplatFromData(i, splat, dataview);
 
@@ -221,10 +222,16 @@ export class GSKernel_3DGS {
                         }*/
                     }
                 }
+
+                sortBuffer[sortOffset + 0] = Math.round(splat.x * 1000.0);
+                sortBuffer[sortOffset + 1] = Math.round(splat.y * 1000.0);
+                sortBuffer[sortOffset + 2] = Math.round(splat.z * 1000.0);
+                sortBuffer[sortOffset + 3] = 1000;
                 
                 pospadOffset += pospad.bytesPerTexel * pospad.texelPerSplat;
                 covcolOffset += covcol.bytesPerTexel * covcol.texelPerSplat;
                 shOffset += sh.bytesPerTexel * sh.texelPerSplat;
+                sortOffset += 4;
             }
 
             const buffers = {pospad, covcol};
@@ -238,6 +245,7 @@ export class GSKernel_3DGS {
                     buffers: buffers,
                     gsType: 'ThreeD',
                     num: pointCount,
+                    sortBuffer: sortBuffer.buffer,
                 },
             }
         }

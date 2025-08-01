@@ -127,15 +127,15 @@ export class GSKernel_SPACETIME {
             poscol.buffer = new ArrayBuffer(poscol.width * poscol.height * poscol.bytesPerTexel);
             rot.buffer = new ArrayBuffer(rot.width * rot.height * rot.bytesPerTexel);
             other.buffer = new ArrayBuffer(other.width * other.height * other.bytesPerTexel);
+            const sortBuffer = new Float32Array(pointCount * 13);
 
             const poscolView = new DataView(poscol.buffer);
             const rotView = new DataView(rot.buffer);
             const otherView = new DataView(other.buffer);
             const splat = {...GSKernel_SPACETIME.params};
-            let poscolOffset = 0, rotOffset = 0, otherOffset = 0;
+            let poscolOffset = 0, rotOffset = 0, otherOffset = 0, sortOffset = 0;
             for (let i = 0;i < pointCount; ++i) {
                 GSKernel_SPACETIME.parseSplatFromData(i, splat, dataview);
-                console.log(splat)
                 poscolView.setFloat32(poscolOffset + 0, splat.x, true);
                 poscolView.setFloat32(poscolOffset + 4, splat.y, true);
                 poscolView.setFloat32(poscolOffset + 8, splat.z, true);
@@ -167,10 +167,25 @@ export class GSKernel_SPACETIME {
                 otherView.setUint16(rotOffset + 22, Utils.f2fp162uint16(splat.sz), true);
                 otherView.setUint16(rotOffset + 24, Utils.f2fp162uint16(splat.tc), true);
                 otherView.setUint16(rotOffset + 26, Utils.f2fp162uint16(splat.ts), true);
+
+                sortBuffer[sortOffset +  0] = splat.x;
+                sortBuffer[sortOffset +  1] = splat.y;
+                sortBuffer[sortOffset +  2] = splat.z;
+                sortBuffer[sortOffset +  3] = splat.pos1x;
+                sortBuffer[sortOffset +  4] = splat.pos1y;
+                sortBuffer[sortOffset +  5] = splat.pos1z;
+                sortBuffer[sortOffset +  6] = splat.pos2x;
+                sortBuffer[sortOffset +  7] = splat.pos2y;
+                sortBuffer[sortOffset +  8] = splat.pos2z;
+                sortBuffer[sortOffset +  9] = splat.pos3x;
+                sortBuffer[sortOffset + 10] = splat.pos3y;
+                sortBuffer[sortOffset + 11] = splat.pos3z;
+                sortBuffer[sortOffset + 12] = splat.tc;
                 
                 poscolOffset += poscol.bytesPerTexel * poscol.texelPerSplat;
                 rotOffset += rot.bytesPerTexel * rot.texelPerSplat;
                 otherOffset += other.bytesPerTexel * other.texelPerSplat;
+                sortOffset += 13;
             }
 
             const buffers = { poscol, rot, other };
@@ -181,6 +196,7 @@ export class GSKernel_SPACETIME {
                     buffers: buffers,
                     gsType: 'SPACETIME',
                     num: pointCount,
+                    sortBuffer: sortBuffer.buffer,
                 },
             }
         }
