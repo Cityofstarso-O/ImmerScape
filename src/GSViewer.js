@@ -47,6 +47,10 @@ export class GSViewer {
         this.splatRenderCount = 0;
         this.splatSortCount = 0;
 
+        this.startTime = performance.now();
+        this.elapsedTime = 0;
+        this.loopedTime = 0;
+
         this.gsloader = new GSLoader(this.eventBus);
         this.gsScene = new GSScene(this.options, this.eventBus, this.graphicsAPI);
         this.shaderManager = new ShaderManager(this.options, this.eventBus, this.graphicsAPI);
@@ -60,8 +64,12 @@ export class GSViewer {
         // TODO: this is just for show
         //this.gsloader.readFileFromServer('https://cityofstarso-o.github.io/ImmerScape/samples/chair.ply');
 
-        const animate = () => {
+        const animate = (currentTime) => {
             requestAnimationFrame(animate);
+
+            this.elapsedTime = currentTime - this.startTime;
+            this.loopedTime = (this.elapsedTime % 1000) / 1000;
+
             if (this.controls) {
                 this.controls.update();
                 if (this.camera.isOrthographicCamera) {
@@ -86,7 +94,7 @@ export class GSViewer {
             }
         }
 
-        animate();
+        animate(performance.now());
     }
 
     shouldRender = function() {
@@ -141,6 +149,7 @@ export class GSViewer {
         const focalY = projMat[5] * 0.5 * this.canvas.height;
         this.shaderManager.updateUniform('focal', [focalX, focalY]);
         this.shaderManager.updateUniform('invViewport', [1 / this.canvas.width, 1 / this.canvas.height]);
+        this.shaderManager.updateUniform('timestamp', this.loopedTime);
 
         this.shaderManager.updateUniforms();
     }
@@ -263,7 +272,7 @@ export class GSViewer {
         this.options.initialCameraPosition = new THREE.Vector3().fromArray(this.options.initialCameraPosition || [0, 0, -2]);
         this.options.cameraUp = new THREE.Vector3().fromArray(this.options.cameraUp || [0, -1, 0]);
         this.options.initialCameraLookAt = new THREE.Vector3().fromArray(this.options.initialCameraLookAt || [0, 0, 0]);
-        this.options.cameraFOV = this.options.cameraFOV || 50;
+        this.options.cameraFOV = this.options.cameraFOV || 60;
 
     }
 
