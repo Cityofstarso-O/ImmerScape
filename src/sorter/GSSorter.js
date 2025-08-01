@@ -2,7 +2,6 @@ import { Utils } from "../Utils.js";
 
 export class GSSorter {
     constructor(options, eventBus) {
-        this.integerBasedSort = options.integerBasedSort;
         this.sharedMemoryForWorkers = options.sharedMemoryForWorkers;
         this.enableSIMDInSort = options.enableSIMDInSort;
         this.gpuAcceleratedSort = options.gpuAcceleratedSort;
@@ -15,7 +14,6 @@ export class GSSorter {
         this.sortWorkerSortedIndexes = null;
         this.sortWorkerIndexesToSort = null;
         this.sortWorkerPrecomputedDistances = null;
-        this.sortWorkerTransforms = null;
 
         this.eventBus = eventBus;
         this.eventBus.on('buffersReady', this.onBuffersReady.bind(this));
@@ -47,18 +45,8 @@ export class GSSorter {
                 'sorterWasmUrl': this.sourceWasm,
                 'splatCount': splatCount,
                 'useSharedMemory': this.sharedMemoryForWorkers,
-                'integerBasedSort': this.integerBasedSort,
-                'dynamicMode': false,
                 'distanceMapRange': 1 << 16,
-                // Super hacky
-                'Constants': {
-                    'BytesPerFloat': Utils.BytesPerFloat,
-                    'BytesPerInt': Utils.BytesPerInt,
-                    'MemoryPageSize': Utils.MemoryPageSize,
-                    'MaxScenes': Utils.MaxScenes
-                },
                 'centers': centers.buffer,
-                'sceneIndexes': null,
                 'range': {
                     'from': 0,
                     'count': splatCount,
@@ -77,7 +65,6 @@ export class GSSorter {
         };
         if (!this.sharedMemoryForWorkers) {
             sortMessage.indexesToSort = this.sortWorkerIndexesToSort;
-            sortMessage.transforms = this.sortWorkerTransforms;
             if (this.gpuAcceleratedSort) {
                 // TODO: deprecate using cpu to calc dist
                 this.sortWorkerPrecomputedDistances = new Float32Array([9, 1, 3, 2, 4, 7, 6, 5, 8, 0]);
@@ -91,7 +78,6 @@ export class GSSorter {
     }
 
     initSorter(splatCount) {
-        const DistancesArrayType = this.integerBasedSort ? Int32Array : Float32Array;
         this.worker.onmessage = (e) => {
             if (e.data.sortDone) {
                 this.sortRunning = false;
@@ -110,15 +96,12 @@ export class GSSorter {
                                                                    e.data.sortedIndexesOffset, splatCount);
                     this.sortWorkerIndexesToSort = new Uint32Array(e.data.indexesToSortBuffer,
                                                                    e.data.indexesToSortOffset, splatCount);
-                    this.sortWorkerPrecomputedDistances = new DistancesArrayType(e.data.precomputedDistancesBuffer,
+                    this.sortWorkerPrecomputedDistances = new Int32Array(e.data.precomputedDistancesBuffer,
                                                                                  e.data.precomputedDistancesOffset,
                                                                                  splatCount);
-                    this.sortWorkerTransforms = new Float32Array(e.data.transformsBuffer,
-                                                                  e.data.transformsOffset, Utils.MaxScenes * 16);
                 } else {
                     this.sortWorkerIndexesToSort = new Uint32Array(splatCount);
-                    this.sortWorkerPrecomputedDistances = new DistancesArrayType(splatCount);
-                    this.sortWorkerTransforms = new Float32Array(Utils.MaxScenes * 16);
+                    this.sortWorkerPrecomputedDistances = new Int32Array(splatCount);
                 }
                 for (let i = 0; i < splatCount; i++) this.sortWorkerIndexesToSort[i] = i;
 
