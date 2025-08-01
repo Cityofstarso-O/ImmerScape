@@ -70,7 +70,7 @@ export class GSKernel_SPACETIME {
             splat.sy = Math.exp(splat.sy);
             splat.sz = Math.exp(splat.sz);
             splat.ca = Utils.sigmoid(splat.ca);
-            const exp_minus_ts = Math.exp(splat.ts);
+            const exp_minus_ts = Math.exp(-splat.ts);
             splat.ts = exp_minus_ts * exp_minus_ts;
         }
     }();
@@ -88,7 +88,7 @@ export class GSKernel_SPACETIME {
             },
             rot: {
                 low: {
-                    name: 'Cov8Omega8',
+                    name: 'Rot8Omega8',
                     bytesPerTexel: 2 * 4 * 2,
                     texelPerSplat: 1,
                     format: "RGBA32UI",
@@ -97,7 +97,7 @@ export class GSKernel_SPACETIME {
             },
             other: {
                 low: {
-                    name: 'Motion18Scale6Tc2Ts2',
+                    name: 'Motion18Scale6Tc4Ts4',
                     bytesPerTexel: 16,
                     texelPerSplat: 2,
                     format: "RGBA32UI",
@@ -143,7 +143,6 @@ export class GSKernel_SPACETIME {
                     splat.cr, splat.cg, splat.cb, splat.ca,
                     poscolView, poscolOffset + 12
                 );
-
                 rotView.setUint16(rotOffset +  0, Utils.f2fp162uint16(splat.rx), true);
                 rotView.setUint16(rotOffset +  2, Utils.f2fp162uint16(splat.ry), true);
                 rotView.setUint16(rotOffset +  4, Utils.f2fp162uint16(splat.rz), true);
@@ -153,20 +152,20 @@ export class GSKernel_SPACETIME {
                 rotView.setUint16(rotOffset + 12, Utils.f2fp162uint16(splat.rot1z), true);
                 rotView.setUint16(rotOffset + 14, Utils.f2fp162uint16(splat.rot1w), true);
                 
-                otherView.setUint16(rotOffset +  0, Utils.f2fp162uint16(splat.pos1x), true);
-                otherView.setUint16(rotOffset +  2, Utils.f2fp162uint16(splat.pos1y), true);
-                otherView.setUint16(rotOffset +  4, Utils.f2fp162uint16(splat.pos1z), true);
-                otherView.setUint16(rotOffset +  6, Utils.f2fp162uint16(splat.pos2x), true);
-                otherView.setUint16(rotOffset +  8, Utils.f2fp162uint16(splat.pos2y), true);
-                otherView.setUint16(rotOffset + 10, Utils.f2fp162uint16(splat.pos2z), true);
-                otherView.setUint16(rotOffset + 12, Utils.f2fp162uint16(splat.pos3x), true);
-                otherView.setUint16(rotOffset + 14, Utils.f2fp162uint16(splat.pos3y), true);
-                otherView.setUint16(rotOffset + 16, Utils.f2fp162uint16(splat.pos3z), true);
-                otherView.setUint16(rotOffset + 18, Utils.f2fp162uint16(splat.sx), true);
-                otherView.setUint16(rotOffset + 20, Utils.f2fp162uint16(splat.sy), true);
-                otherView.setUint16(rotOffset + 22, Utils.f2fp162uint16(splat.sz), true);
-                otherView.setUint16(rotOffset + 24, Utils.f2fp162uint16(splat.tc), true);
-                otherView.setUint16(rotOffset + 26, Utils.f2fp162uint16(splat.ts), true);
+                otherView.setUint16(otherOffset +  0, Utils.f2fp162uint16(splat.pos1x), true);
+                otherView.setUint16(otherOffset +  2, Utils.f2fp162uint16(splat.pos1y), true);
+                otherView.setUint16(otherOffset +  4, Utils.f2fp162uint16(splat.pos1z), true);
+                otherView.setUint16(otherOffset +  6, Utils.f2fp162uint16(splat.pos2x), true);
+                otherView.setUint16(otherOffset +  8, Utils.f2fp162uint16(splat.pos2y), true);
+                otherView.setUint16(otherOffset + 10, Utils.f2fp162uint16(splat.pos2z), true);
+                otherView.setUint16(otherOffset + 12, Utils.f2fp162uint16(splat.pos3x), true);
+                otherView.setUint16(otherOffset + 14, Utils.f2fp162uint16(splat.pos3y), true);
+                otherView.setUint16(otherOffset + 16, Utils.f2fp162uint16(splat.pos3z), true);
+                otherView.setUint16(otherOffset + 18, Utils.f2fp162uint16(splat.sx), true);
+                otherView.setUint16(otherOffset + 20, Utils.f2fp162uint16(splat.sy), true);
+                otherView.setUint16(otherOffset + 22, Utils.f2fp162uint16(splat.sz), true);
+                otherView.setFloat32(otherOffset + 24, splat.tc, true);
+                otherView.setFloat32(otherOffset + 28, splat.ts, true);
 
                 sortBuffer[sortOffset +  0] = splat.x;
                 sortBuffer[sortOffset +  1] = splat.y;
@@ -284,10 +283,9 @@ export class GSKernel_SPACETIME {
                     motion3.z = unpack16x2.x; s.x = unpack16x2.y;
                     unpack16x2 = uint2fp16x2(texel.y);
                     s.y = unpack16x2.x; s.z = unpack16x2.y;
-                    unpack16x2 = uint2fp16x2(texel.z);
 
-                    float deltaT = timestamp - unpack16x2.x;
-                    float trbfScale = unpack16x2.y;
+                    float deltaT = timestamp - uintBitsToFloat(texel.z);
+                    float trbfScale = uintBitsToFloat(texel.w);
 
                     // fetch center, color
                     fetchCenterColor(splatIndex, center, color);

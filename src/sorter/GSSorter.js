@@ -1,5 +1,4 @@
 import { GSType } from "../Global.js";
-import { Utils } from "../Utils.js";
 
 export class GSSorter {
     constructor(options, eventBus) {
@@ -40,13 +39,14 @@ export class GSSorter {
         }, [data.sortBuffer]);
     }
 
-    sort(mvpMatrix, cameraPositionArray, splatRenderCount, splatSortCount) {
+    sort(mvpMatrix, cameraPositionArray, splatRenderCount, splatSortCount, timestamp) {
         const sortMessage = {
             'modelViewProj': mvpMatrix.elements,
             'cameraPosition': cameraPositionArray,
             'splatRenderCount': splatRenderCount,
             'splatSortCount': splatSortCount,
-            'usePrecomputedDistances': this.gpuAcceleratedSort
+            'usePrecomputedDistances': this.gpuAcceleratedSort,
+            'timestamp': timestamp,
         };
         if (!this.sharedMemoryForWorkers) {
             sortMessage.indexesToSort = this.sortWorkerIndexesToSort;

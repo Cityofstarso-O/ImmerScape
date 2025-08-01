@@ -115,6 +115,11 @@ export class ShaderManager {
                 'value': 3 / 255,
                 'type': '1f',
                 'update': true,
+            },
+            'timestamp': {
+                'value': 0.0,
+                'type': '1f',
+                'update': true,
             }
         };
         this.vertexInput = {}
@@ -297,7 +302,7 @@ export class ShaderManager {
                 gl_Position        = quadPos;
 
                 ${this.debug ? `
-                debugOutput = vec4(splatCenter, splatIndex);
+                debugOutput = vec4(0, 1, 2, 3);
                 ` : ``};
             }
         `;

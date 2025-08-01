@@ -24,7 +24,7 @@ const Constants = {
 };
 
 function sort(splatSortCount, splatRenderCount, modelViewProj,
-              usePrecomputedDistances, copyIndexesToSort, copyPrecomputedDistances) {
+              usePrecomputedDistances, copyIndexesToSort, copyPrecomputedDistances, timestamp) {
     const sortStartTime = performance.now();
     if (!useSharedMemory) {
         const indexesToSort = new Uint32Array(wasmMemory, indexesToSortOffset, copyIndexesToSort.byteLength / Constants.BytesPerInt);
@@ -40,7 +40,7 @@ function sort(splatSortCount, splatRenderCount, modelViewProj,
     new Uint32Array(wasmMemory, frequenciesOffset, distanceMapRange).set(memsetZero);
     wasmInstance.exports.sortIndexes(indexesToSortOffset, centersOffset, precomputedDistancesOffset,
                                      mappedDistancesOffset, frequenciesOffset, modelViewProjOffset,
-                                     sortedIndexesOffset, distanceMapRange, 0.0,
+                                     sortedIndexesOffset, distanceMapRange, timestamp,
                                      splatSortCount, splatRenderCount, splatCount, 
                                      usePrecomputedDistances, gsType);
     const sortMessage = {
@@ -81,7 +81,7 @@ self.onmessage = async (e) => {
             if (usePrecomputedDistances) copyPrecomputedDistances = e.data.sort.precomputedDistances;
         }
         sort(sortCount, renderCount, e.data.sort.modelViewProj, usePrecomputedDistances,
-             copyIndexesToSort, copyPrecomputedDistances);
+             copyIndexesToSort, copyPrecomputedDistances, e.data.sort.timestamp);
     } else if (e.data.init) {
         const data = e.data.init;
         // Yep, this is super hacky and gross :(
