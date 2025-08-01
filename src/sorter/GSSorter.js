@@ -1,3 +1,4 @@
+import { GSType } from "../Global.js";
 import { Utils } from "../Utils.js";
 
 export class GSSorter {
@@ -22,23 +23,6 @@ export class GSSorter {
     async onBuffersReady({ data, sceneName }) {
         const splatCount = data.num;
         this.initSorter(splatCount);
-        // create centers for web worker
-        const pospad = data.buffers.pospad;
-        const pospadView = new DataView(pospad.buffer);
-        const centersBuffer = new ArrayBuffer(4 * 4 * data.num);
-        const centers = new Int32Array(centersBuffer);
-        if (pospad.bytesPerTexel == 8) {
-            // TODO: 
-        } else if (pospad.bytesPerTexel == 16) {
-            let offset = 0;
-            for (let i = 0; i < data.num; ++i) {
-                centers[i * 4 + 0] = Math.round(pospadView.getFloat32(offset + 0, true) * 1000.0);
-                centers[i * 4 + 1] = Math.round(pospadView.getFloat32(offset + 4, true) * 1000.0);
-                centers[i * 4 + 2] = Math.round(pospadView.getFloat32(offset + 8, true) * 1000.0);
-                centers[i * 4 + 3] = 1 * 1000;
-                offset += 16;
-            }
-        }
 
         this.worker.postMessage({
             'init': {
@@ -46,13 +30,14 @@ export class GSSorter {
                 'splatCount': splatCount,
                 'useSharedMemory': this.sharedMemoryForWorkers,
                 'distanceMapRange': 1 << 16,
-                'centers': centers.buffer,
+                'centers': data.sortBuffer,
+                'gsType': GSType[data.gsType],
                 'range': {
                     'from': 0,
                     'count': splatCount,
                 }
             }
-        }, [centers.buffer]);
+        }, [data.sortBuffer]);
     }
 
     sort(mvpMatrix, cameraPositionArray, splatRenderCount, splatSortCount) {
@@ -128,6 +113,7 @@ export class GSSorter {
         } else {
             this.sourceWasm = this.sharedMemoryForWorkers ? SorterWasm : SorterWasmNonShared;
         }
+        this.sourceWasm = SorterWasmNoSIMDNonShared;
     }
 
 }
