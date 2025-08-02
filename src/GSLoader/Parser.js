@@ -3,7 +3,7 @@ import { Utils } from "../Utils.js";
 import { PlyLoader } from "./TypeLoader/PlyLoader.js";
 
 console.log('Worker: Parser.js module loaded successfully');
-
+let isMobile;
 /*return = {
     valid: Boolean,
     error: String,
@@ -25,7 +25,7 @@ const loadFromNative = function() {
         const fileType = map2FileType[extension] || FileType.NONE;
         switch (fileType) {
             case FileType.PLY:
-                return PlyLoader.loadFromNative(content);
+                return PlyLoader.loadFromNative(content, isMobile);
             default:
                 return {
                     'valid': false,
@@ -38,6 +38,7 @@ const loadFromNative = function() {
 
 self.onmessage = (event) => {
     const message = event.data;
+    isMobile = message.isMobile;
     let error = '';
     switch (message.type) {
         case LoadType.NATIVE:

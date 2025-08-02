@@ -4,3 +4,5 @@ TODO
 test
 test.html
 *.png
+node_modules
+dist

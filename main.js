@@ -1,9 +1,10 @@
-import { GSViewer } from "./src/GSViewer.js"
+import GSViewer from "./src/GSViewer.js"
 
 async function main() {
     const viewer = new GSViewer();
 
     viewer.run();
+    viewer.fetchSceneWithURL()
 }
 
 main()

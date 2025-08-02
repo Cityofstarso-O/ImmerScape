@@ -9,7 +9,7 @@ import { OrbitControls } from './OrbitControls.js';
 import * as THREE from "./external/three.module.js"
 
 
-export class GSViewer {
+export default class GSViewer {
     constructor() {
         this.canvas = document.getElementById('drop-zone');
         this.graphicsAPI = new WebGL(this.canvas);
@@ -60,9 +60,12 @@ export class GSViewer {
         this.setupControls();
     }
 
-    run() {
+    fetchSceneWithURL(url) {
         // TODO: this is just for show
-        //this.gsloader.readFileFromServer('https://cityofstarso-o.github.io/ImmerScape/samples/chair.ply');
+        this.gsloader.readFileFromServer(url);
+    }
+
+    run() {
 
         const animate = (currentTime) => {
             requestAnimationFrame(animate);
@@ -76,7 +79,7 @@ export class GSViewer {
                     GSViewer.setCameraPositionFromZoom(this.camera, this.camera, this.controls);
                 }
             }
-            this.runSplatSort();
+            this.runSplatSort(this.gsScene.forceSort());
             this.updateForRendererSizeChanges();
 
             if (this.shouldRender()) {
@@ -247,7 +250,7 @@ export class GSViewer {
                 cameraPositionArray[1] = this.camera.position.y;
                 cameraPositionArray[2] = this.camera.position.z;
 
-                this.sorter.sort(mvpMatrix, cameraPositionArray, this.splatRenderCount, this.splatSortCount);
+                this.sorter.sort(mvpMatrix, cameraPositionArray, this.splatRenderCount, this.splatSortCount, this.loopedTime);
 
                 if (queuedSorts.length === 0) {
                     lastSortViewPos.copy(this.camera.position);

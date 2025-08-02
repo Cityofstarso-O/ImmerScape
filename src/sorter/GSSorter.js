@@ -56,7 +56,6 @@ export class GSSorter {
                 sortMessage.precomputedDistances = this.sortWorkerPrecomputedDistances;
             }
         }
-        console.log(sortMessage)
         this.worker.postMessage({
             'sort': sortMessage
         });
@@ -70,6 +69,7 @@ export class GSSorter {
                     // TODO
                 } else {
                     const sortedIndexes = new Uint32Array(e.data.sortedIndexes.buffer, 0, e.data.splatRenderCount);
+                    console.log(e.data.sortTime);
                     this.eventBus.emit('sortDone', sortedIndexes);
                 }
                 this.lastSortTime = e.data.sortTime;
@@ -102,10 +102,10 @@ export class GSSorter {
             console.error('Error object:', event.error);
         };
 
-        const SorterWasm = 'sorter.wasm';
-        const SorterWasmNoSIMD = 'sorter_no_simd.wasm';
-        const SorterWasmNoSIMDNonShared = 'sorter_no_simd_non_shared.wasm';
-        const SorterWasmNonShared = 'sorter_non_shared.wasm';
+        const SorterWasm = 'wasm/sorter.wasm';
+        const SorterWasmNoSIMD = 'wasm/sorter_no_simd.wasm';
+        const SorterWasmNoSIMDNonShared = 'wasm/sorter_no_simd_non_shared.wasm';
+        const SorterWasmNonShared = 'wasm/sorter_non_shared.wasm';
         this.sourceWasm = SorterWasm;
 
         if (!this.enableSIMDInSort) {
@@ -113,7 +113,7 @@ export class GSSorter {
         } else {
             this.sourceWasm = this.sharedMemoryForWorkers ? SorterWasm : SorterWasmNonShared;
         }
-        this.sourceWasm = SorterWasmNoSIMDNonShared;
+        this.sourceWasm = SorterWasmNonShared;
     }
 
 }

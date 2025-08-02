@@ -34,6 +34,13 @@ export class GSScene {
         console.log(this.scenes[sceneName])
     }
 
+    forceSort() {
+        if (this.currentScene) {
+            return this.scenes[this.currentScene].gsType === 'SPACETIME';
+        }
+        return false;
+    }
+
     getSplatNum() {
         if (this.currentScene && this.scenes[this.currentScene]) {
             return this.scenes[this.currentScene].num;

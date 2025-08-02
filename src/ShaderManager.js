@@ -1,6 +1,6 @@
 import { GSType } from "./Global.js";
-import { GSKernel_3DGS } from "./GSLoader/GSKernal/3dgs.js";
-import { GSKernel_SPACETIME } from "./GSLoader/GSKernal/spacetime.js";
+import { GSKernel_3DGS } from "./GSKernal/3dgs.js";
+import { GSKernel_SPACETIME } from "./GSKernal/spacetime.js";
 
 export class ShaderManager {
     static shaderHelperFunc = `

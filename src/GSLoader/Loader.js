@@ -53,9 +53,12 @@ export class GSLoader {
                 'parser': ParserType.CPU,
                 'name': this.currentFile,
                 'data': content,
+                'isMobile': this.isMobile,
             }, [content]);
         };
 
+        this.isMobile = Utils.isMobile();
+        console.log("Run on Mobile device: ", this.isMobile);
         this.currentFile = '';
         this.sendTime = 0;
         this.recvTime = 0;
@@ -83,6 +86,7 @@ export class GSLoader {
                 'parser': ParserType.CPU,
                 'name': this.currentFile,
                 'data': content,
+                'isMobile': this.isMobile,
             }, [content]);
             
         } catch (error) {

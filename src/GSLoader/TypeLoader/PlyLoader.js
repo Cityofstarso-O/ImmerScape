@@ -1,7 +1,6 @@
 import { GSType } from "../../Global.js";
-import { GSKernel_3DGS } from "../GSKernal/3dgs.js";
-import { Utils } from "../../Utils.js";
-import { GSKernel_SPACETIME } from "../GSKernal/spacetime.js";
+import { GSKernel_3DGS } from "../../GSKernal/3dgs.js";
+import { GSKernel_SPACETIME } from "../../GSKernal/spacetime.js";
 
 export class PlyLoader {
     static splitHeaderAndData(arrayBuffer) {
@@ -12,17 +11,17 @@ export class PlyLoader {
         return { header, dataview };
     }
 
-    static loadFromNative(arrayBuffer) {
+    static loadFromNative(arrayBuffer, isMobile) {
         const { header, dataview } = PlyLoader.splitHeaderAndData(arrayBuffer);
         const { offsets, pointCount } = PlyLoader.parseHeader(header);
         const gsType = PlyLoader.identifyGSType(offsets);
         let res;
         switch (gsType) {
             case GSType.ThreeD:
-                res = GSKernel_3DGS.parseData2Buffers(pointCount, dataview, Utils.isMobile() ? 'low' : 'medium');
+                res = GSKernel_3DGS.parseData2Buffers(pointCount, dataview, isMobile ? 'low' : 'medium');
                 break;
             case GSType.SPACETIME:
-                res = GSKernel_SPACETIME.parseData2Buffers(pointCount, dataview, Utils.isMobile() ? 'low' : 'medium');
+                res = GSKernel_SPACETIME.parseData2Buffers(pointCount, dataview, isMobile ? 'low' : 'medium');
                 break;
             default:
                 res = {

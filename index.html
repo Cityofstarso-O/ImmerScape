@@ -38,6 +38,14 @@
 
 <body>
 	<canvas id="drop-zone"></canvas>
-	<script src="main.js" type="module"></script>
+	<script type="module">
+		
+		import ImmerScapeViewer from "./src/GSViewer.js";
+    	document.addEventListener('DOMContentLoaded', () => {
+    	    const viewer = new ImmerScapeViewer();
+    	    viewer.run();
+    		viewer.fetchSceneWithURL();
+    	});
+    </script>
 </body>
 </html>
