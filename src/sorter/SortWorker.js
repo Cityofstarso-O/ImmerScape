@@ -13,10 +13,12 @@ let centersOffset;
 let modelViewProjOffset;
 let debugOffset;
 let memsetZero;
-let sortedIndexesOut;
 let distanceMapRange;
 let uploadedSplatCount;
 let gsType;
+let transferablesortedIndexesOut;
+let transferableIndexToSort;
+let transferablePrecomputedDistance;
 const Constants = {
     BytesPerFloat: 4,
     BytesPerInt: 4,
@@ -24,21 +26,21 @@ const Constants = {
     MaxScenes: 32
 };
 
-function sort(splatSortCount, splatRenderCount, modelViewProj,
-              usePrecomputedDistances, copyIndexesToSort, copyPrecomputedDistances, timestamp) {
+function sort(splatSortCount, splatRenderCount, modelViewProj, usePrecomputedDistances, timestamp) {
     const sortStartTime = performance.now();
     if (!useSharedMemory) {
-        const indexesToSort = new Uint32Array(wasmMemory, indexesToSortOffset, copyIndexesToSort.byteLength / Constants.BytesPerInt);
-        indexesToSort.set(copyIndexesToSort);
+        const indexesToSort = new Uint32Array(wasmMemory, indexesToSortOffset, transferableIndexToSort.byteLength / Constants.BytesPerInt);
+        indexesToSort.set(transferableIndexToSort);
         if (usePrecomputedDistances) {
             let precomputedDistances = new Int32Array(wasmMemory, precomputedDistancesOffset,
-                                                      copyPrecomputedDistances.byteLength / Constants.BytesPerInt);
-            precomputedDistances.set(copyPrecomputedDistances);
+                                                      transferablePrecomputedDistance.byteLength / Constants.BytesPerInt);
+            precomputedDistances.set(transferablePrecomputedDistance);
         }
     }
     if (!memsetZero) memsetZero = new Uint32Array(distanceMapRange);
     new Float32Array(wasmMemory, modelViewProjOffset, 16).set(modelViewProj);
     new Uint32Array(wasmMemory, frequenciesOffset, distanceMapRange).set(memsetZero);
+    const wasmStartTime = performance.now();
     wasmInstance.exports.sortIndexes(indexesToSortOffset, centersOffset, precomputedDistancesOffset,
                                      mappedDistancesOffset, frequenciesOffset, modelViewProjOffset,
                                      sortedIndexesOffset, distanceMapRange, timestamp,
@@ -50,17 +52,22 @@ function sort(splatSortCount, splatRenderCount, modelViewProj,
         'splatRenderCount': splatRenderCount,
         'sortTime': 0
     };
+    const transferables = [];
     if (!useSharedMemory) {
-        const sortedIndexes = new Uint32Array(wasmMemory, sortedIndexesOffset, splatRenderCount);
-        if (!sortedIndexesOut || sortedIndexesOut.length < splatRenderCount) {
-            sortedIndexesOut = new Uint32Array(splatRenderCount);
+        transferablesortedIndexesOut.set(new Uint32Array(wasmMemory, sortedIndexesOffset, splatRenderCount));
+        transferables.push(transferablesortedIndexesOut.buffer);
+        sortMessage.sortedIndexes = transferablesortedIndexesOut;
+
+        transferables.push(transferableIndexToSort.buffer);
+        sortMessage.indexesToSort = transferableIndexToSort;
+        if (usePrecomputedDistances) {
+            transferables.push(transferablePrecomputedDistance.buffer);
+            sortMessage.precomputedDistances = transferablePrecomputedDistance;
         }
-        sortedIndexesOut.set(sortedIndexes);
-        sortMessage.sortedIndexes = sortedIndexesOut;
     }
     const sortEndTime = performance.now();
     sortMessage.sortTime = sortEndTime - sortStartTime;
-    self.postMessage(sortMessage);
+    self.postMessage(sortMessage, transferables);
 }
 
 self.onmessage = async (e) => {
@@ -75,14 +82,12 @@ self.onmessage = async (e) => {
         const renderCount = Math.min(e.data.sort.splatRenderCount || 0, uploadedSplatCount);
         const sortCount = Math.min(e.data.sort.splatSortCount || 0, uploadedSplatCount);
         const usePrecomputedDistances = e.data.sort.usePrecomputedDistances;
-        let copyIndexesToSort;
-        let copyPrecomputedDistances;
         if (!useSharedMemory) {
-            copyIndexesToSort = e.data.sort.indexesToSort;
-            if (usePrecomputedDistances) copyPrecomputedDistances = e.data.sort.precomputedDistances;
+            transferablesortedIndexesOut = e.data.sort.sortedIndexes;
+            transferableIndexToSort = e.data.sort.indexesToSort;
+            if (usePrecomputedDistances) transferablePrecomputedDistance = e.data.sort.precomputedDistances;
         }
-        sort(sortCount, renderCount, e.data.sort.modelViewProj, usePrecomputedDistances,
-             copyIndexesToSort, copyPrecomputedDistances, e.data.sort.timestamp);
+        sort(sortCount, renderCount, e.data.sort.modelViewProj, usePrecomputedDistances, e.data.sort.timestamp);
     } else if (e.data.init) {
         const data = e.data.init;
         // Yep, this is super hacky and gross :(

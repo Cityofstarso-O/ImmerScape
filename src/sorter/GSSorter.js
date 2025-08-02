@@ -48,31 +48,54 @@ export class GSSorter {
             'usePrecomputedDistances': this.gpuAcceleratedSort,
             'timestamp': timestamp,
         };
+        // NOTE: when rendering 4dgs, we should always sort for current timestamp.
+        // when sharedMemory is not available and the scene is large, 
+        // the high frequency of copying and allocation of worker message may cause `out of memory`
+        // in case of that we allocate once and transfer objects between main thread and worker
+        const transferables = [];
         if (!this.sharedMemoryForWorkers) {
+            if (!this.sortWorkerIndexesToSort.length) {
+                return; // sortWorkerIndexesToSort is not yet transferred back
+            }
             sortMessage.indexesToSort = this.sortWorkerIndexesToSort;
+            transferables.push(sortMessage.indexesToSort.buffer);
+
+            if (!this.sortWorkerSortedIndexes.length) {
+                return; // sortWorkerSortedIndexes is not yet transferred back
+            }
+            sortMessage.sortedIndexes = this.sortWorkerSortedIndexes;
+            transferables.push(sortMessage.sortedIndexes.buffer);
             if (this.gpuAcceleratedSort) {
                 // TODO: deprecate using cpu to calc dist
-                this.sortWorkerPrecomputedDistances = new Float32Array([9, 1, 3, 2, 4, 7, 6, 5, 8, 0]);
+                if (!this.sortWorkerPrecomputedDistances.length) {
+                    return; // sortWorkerPrecomputedDistances is not yet transferred back
+                }
                 sortMessage.precomputedDistances = this.sortWorkerPrecomputedDistances;
+                transferables.push(sortMessage.precomputedDistances.buffer)
             }
         }
         this.worker.postMessage({
             'sort': sortMessage
-        });
+        }, transferables);
     }
 
     initSorter(splatCount) {
         this.worker.onmessage = (e) => {
             if (e.data.sortDone) {
-                this.sortRunning = false;
                 if (this.sharedMemoryForWorkers) {
                     // TODO
                 } else {
+                    this.sortWorkerSortedIndexes = e.data.sortedIndexes;
+                    this.sortWorkerIndexesToSort = e.data.indexesToSort;
+                    if (this.gpuAcceleratedSort) {
+                        this.sortWorkerPrecomputedDistances = e.data.precomputedDistances;
+                    }
                     const sortedIndexes = new Uint32Array(e.data.sortedIndexes.buffer, 0, e.data.splatRenderCount);
                     console.log(e.data.sortTime);
                     this.eventBus.emit('sortDone', sortedIndexes);
                 }
                 this.lastSortTime = e.data.sortTime;
+                this.sortRunning = false;
             } else if (e.data.sortCanceled) {
                 this.sortRunning = false;
             } else if (e.data.sortSetupPhase1Complete) {
@@ -85,6 +108,7 @@ export class GSSorter {
                                                                                  e.data.precomputedDistancesOffset,
                                                                                  splatCount);
                 } else {
+                    this.sortWorkerSortedIndexes = new Uint32Array(splatCount);
                     this.sortWorkerIndexesToSort = new Uint32Array(splatCount);
                     this.sortWorkerPrecomputedDistances = new Int32Array(splatCount);
                 }
