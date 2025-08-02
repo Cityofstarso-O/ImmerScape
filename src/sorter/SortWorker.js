@@ -11,6 +11,7 @@ let mappedDistancesOffset;
 let frequenciesOffset;
 let centersOffset;
 let modelViewProjOffset;
+let debugOffset;
 let memsetZero;
 let sortedIndexesOut;
 let distanceMapRange;
@@ -42,7 +43,7 @@ function sort(splatSortCount, splatRenderCount, modelViewProj,
                                      mappedDistancesOffset, frequenciesOffset, modelViewProjOffset,
                                      sortedIndexesOffset, distanceMapRange, timestamp,
                                      splatSortCount, splatRenderCount, splatCount, 
-                                     usePrecomputedDistances, gsType);
+                                     usePrecomputedDistances, gsType, debugOffset);
     const sortMessage = {
         'sortDone': true,
         'splatSortCount': splatSortCount,
@@ -99,6 +100,7 @@ self.onmessage = async (e) => {
         const memoryRequiredForMappedDistances = splatCount * Constants.BytesPerInt;
         const memoryRequiredForIntermediateSortBuffers = distanceMapRange * Constants.BytesPerInt;
         const memoryRequiredForSortedIndexes = splatCount * Constants.BytesPerInt;
+        const memoryRequiredForDebug = 8 * 4;
         const extraMemory = Constants.MemoryPageSize * 32;
         const totalRequiredMemory = memoryRequiredForIndexesToSort +
                                     memoryRequiredForCenters +
@@ -107,6 +109,7 @@ self.onmessage = async (e) => {
                                     memoryRequiredForMappedDistances +
                                     memoryRequiredForIntermediateSortBuffers +
                                     memoryRequiredForSortedIndexes +
+                                    memoryRequiredForDebug +
                                     extraMemory;
         const totalPagesRequired = Math.floor(totalRequiredMemory / Constants.MemoryPageSize ) + 1;
 
@@ -140,6 +143,7 @@ self.onmessage = async (e) => {
         mappedDistancesOffset = precomputedDistancesOffset + memoryRequiredForPrecomputedDistances;
         frequenciesOffset = mappedDistancesOffset + memoryRequiredForMappedDistances;
         sortedIndexesOffset = frequenciesOffset + memoryRequiredForIntermediateSortBuffers;
+        debugOffset = sortedIndexesOffset + memoryRequiredForSortedIndexes;
         wasmMemory = sorterWasmImport.env.memory.buffer;
 
         // update centers
