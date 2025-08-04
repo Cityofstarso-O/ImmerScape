@@ -46,6 +46,7 @@ module.exports = {
       patterns: [
         // 将 'public' 文件夹的所有内容复制到 'dist' 文件夹的根目录
         { from: 'src/sorter/wasm', to: 'wasm' }, 
+        { from: 'scenes', to: 'scenes' }, 
       ],
     }),
     

@@ -22,6 +22,7 @@ export const FileType = {
     'PLY': 1,
     'SPLAT': 2,
     'SPZ': 3,
+    'SPB': 4,
 };
 
 export const GraphicsApiType = {

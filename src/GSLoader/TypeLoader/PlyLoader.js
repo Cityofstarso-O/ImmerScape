@@ -18,10 +18,10 @@ export class PlyLoader {
         let res;
         switch (gsType) {
             case GSType.ThreeD:
-                res = GSKernel_3DGS.parseData2Buffers(pointCount, dataview, isMobile ? 'low' : 'medium');
+                res = GSKernel_3DGS.parsePlyData2Buffers(pointCount, dataview, isMobile ? 'low' : 'medium');
                 break;
             case GSType.SPACETIME:
-                res = GSKernel_SPACETIME.parseData2Buffers(pointCount, dataview, isMobile ? 'low' : 'medium');
+                res = GSKernel_SPACETIME.parsePlyData2Buffers(pointCount, dataview, isMobile ? 'low' : 'low');
                 break;
             default:
                 res = {

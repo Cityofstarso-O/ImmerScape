@@ -22,10 +22,28 @@ export class Utils {
     }
 
     static packFloat2rgba(r, g, b, a, out, offset = 0) {
-        out.setUint8(offset + 0, Utils.float2uint8(r));
-        out.setUint8(offset + 1, Utils.float2uint8(g));
-        out.setUint8(offset + 2, Utils.float2uint8(b));
-        out.setUint8(offset + 3, Utils.float2uint8(a));
+        Utils.pack4Float2Uint32(r, g, b, a, 0, 1, out, offset);
+    }
+
+    static pack4Float2Uint32(x, y, z, w, min, max, out, offset = 0) {
+        if (Array.isArray(min) && Array.isArray(max)) {
+            if (min.length !== 4 || max.length !== 4) {
+                throw new Error("min.length, max.length should be 4");
+            }
+            out.setUint8(offset + 0, Utils.float2uint8(x, min[0], max[0]));
+            out.setUint8(offset + 1, Utils.float2uint8(y, min[1], max[1]));
+            out.setUint8(offset + 2, Utils.float2uint8(z, min[2], max[2]));
+            out.setUint8(offset + 3, Utils.float2uint8(w, min[3], max[3]));
+        } 
+        else if (typeof min === 'number' && typeof max === 'number') {
+            out.setUint8(offset + 0, Utils.float2uint8(x, min, max));
+            out.setUint8(offset + 1, Utils.float2uint8(y, min, max));
+            out.setUint8(offset + 2, Utils.float2uint8(z, min, max));
+            out.setUint8(offset + 3, Utils.float2uint8(w, min, max));
+        } 
+        else {
+            throw new Error("min, max should be both either Number or Array");
+        }
     }
 
     static computeCov3dPack2fp16 = function() {

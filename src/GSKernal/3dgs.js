@@ -31,6 +31,80 @@ export class GSKernel_3DGS {
         }
         return res;
     }
+    static config = {
+        low : {
+            pospad: {
+                name: 'Pos6Pad2',
+                bytesPerTexel: 3 * 2 + 2,
+                texelPerSplat: 1,
+                format: "RGBA16F",
+                array: 1,
+            },
+            covcol: {
+                name: 'Cov12Col4',
+                bytesPerTexel: 2 * 6 + 4,
+                texelPerSplat: 1,
+                format: "RGBA32UI",
+                array: 1,
+            },
+            sh: {  // deg 0
+                name: '',
+                bytesPerTexel: 0,
+                texelPerSplat: 0,
+                format: "",
+                array: 0,
+                deg: 0,
+            },
+        },
+        medium: {
+            pospad: {
+                name: 'Pos6Pad2',
+                bytesPerTexel: 3 * 2 + 2,
+                texelPerSplat: 1,
+                format: "RGBA16F",
+                array: 1,
+            },
+            covcol: {
+                name: 'Cov12Col4',
+                bytesPerTexel: 2 * 6 + 4,
+                texelPerSplat: 1,
+                format: "RGBA32UI",
+                array: 1,
+            },
+            sh: {   // deg 1
+                name: 'SH9Pad3',
+                bytesPerTexel: 12,
+                texelPerSplat: 1,
+                format: "RGB32UI",
+                array: 1,
+                deg: 1,
+            },
+        },
+        high: {
+            pospad: {
+                name: 'Pos12Pad4',
+                bytesPerTexel: 3 * 4 + 4,
+                texelPerSplat: 1,
+                format: "RGBA32F",
+                array: 1,
+            },
+            covcol: {
+                name: 'Cov12Col4',
+                bytesPerTexel: 2 * 6 + 4,
+                texelPerSplat: 1,
+                format: "RGBA32UI",
+                array: 1,
+            },
+            sh: { // deg 2
+                name: 'SH24',
+                bytesPerTexel: 12,
+                texelPerSplat: 2,
+                format: "RGB32UI",
+                array: 1,
+                deg: 2,
+            },
+        }
+    }
 
     static updateOffsets = function() {
         
@@ -87,60 +161,7 @@ export class GSKernel_3DGS {
         }
     }();
 
-    static parseData2Buffers = function() {
-        const config = {
-            pospad: {
-                low: {
-                    name: 'Pos6Pad2',
-                    bytesPerTexel: 3 * 2 + 2,
-                    texelPerSplat: 1,
-                    format: "RGBA16F",
-                    array: 1,
-                },
-                medium: {
-                    name: 'Pos12Pad4',
-                    bytesPerTexel: 3 * 4 + 4,
-                    texelPerSplat: 1,
-                    format: "RGBA32F",
-                    array: 1,
-                },
-            },
-            covcol: {
-                low: {
-                    name: 'Cov12Col4',
-                    bytesPerTexel: 2 * 6 + 4,
-                    texelPerSplat: 1,
-                    format: "RGBA32UI",
-                    array: 1,
-                },
-            },
-            sh: {
-                low: {  // deg 0
-                    name: '',
-                    bytesPerTexel: 0,
-                    texelPerSplat: 0,
-                    format: "",
-                    array: 0,
-                    deg: 0,
-                },
-                medium: {   // deg 1
-                    name: 'SH9Pad3',
-                    bytesPerTexel: 12,
-                    texelPerSplat: 1,
-                    format: "RGB32UI",
-                    array: 1,
-                    deg: 1,
-                },
-                high: { // deg 2
-                    name: 'SH24',
-                    bytesPerTexel: 12,
-                    texelPerSplat: 2,
-                    format: "RGB32UI",
-                    array: 1,
-                    deg: 2,
-                },
-            },
-        }
+    static parsePlyData2Buffers = function() {
 
         return function(pointCount, dataview, quality = 'medium') {
             // a little hack, pointCount shouldn't be too large (<= 8,388,608)
@@ -149,12 +170,10 @@ export class GSKernel_3DGS {
                 pointCount = 4096 * 2048;
             }
 
-            let currentConfig = config.pospad[quality] || config.pospad.medium || config.pospad.low;
-            const pospad = {...currentConfig};
-            currentConfig = config.covcol[quality] || config.covcol.medium || config.covcol.low;
-            const covcol = {...currentConfig};
-            currentConfig = config.sh[quality] || config.sh.medium || config.sh.low;
-            const sh = {...currentConfig};
+            const buffers = GSKernel_3DGS.config[quality];
+            const pospad = buffers.pospad;
+            const covcol = buffers.covcol;
+            const sh     = buffers.sh;
 
             Object.assign(pospad, Utils.computeTexSize(pospad.texelPerSplat * pointCount));
             Object.assign(covcol, Utils.computeTexSize(covcol.texelPerSplat * pointCount));
@@ -227,9 +246,8 @@ export class GSKernel_3DGS {
                 sortOffset += 4;
             }
 
-            const buffers = {pospad, covcol};
-            if (sh.deg >= 1) {
-                buffers.sh = sh;
+            if (sh.deg == 0) {
+                delete buffers.sh;
             }
 
             return {
@@ -243,6 +261,76 @@ export class GSKernel_3DGS {
             }
         }
     }();
+
+    static parseSpbData2Buffers(descriptor, arrayBuffer) {
+        const pointCount = descriptor.num;
+        const buffers = {...GSKernel_3DGS.config[descriptor.quality]};
+        const pospad = buffers.pospad;
+        const covcol = buffers.covcol;
+        const sh = buffers.sh;
+
+        Object.assign(pospad, Utils.computeTexSize(pospad.texelPerSplat * pointCount));
+        Object.assign(covcol, Utils.computeTexSize(covcol.texelPerSplat * pointCount));
+        Object.assign(sh, Utils.computeTexSize(sh.texelPerSplat * pointCount));
+
+        // TODO: deg 0 and deg1 and deg3
+        pospad.buffer = arrayBuffer.slice(descriptor.buffers.bind0.offset, 
+            descriptor.buffers.bind0.offset + pospad.width * pospad.height * pospad.bytesPerTexel);
+        if (descriptor.pad) {
+            covcol.buffer = arrayBuffer.slice(descriptor.buffers.bind1.offset, 
+                descriptor.buffers.bind1.offset + covcol.width * covcol.height * covcol.bytesPerTexel);
+            sh.buffer = arrayBuffer.slice(descriptor.buffers.bind2.offset, 
+                descriptor.buffers.bind2.offset + sh.width * sh.height * sh.bytesPerTexel);
+        } else {
+            if (descriptor.quality == "low") {
+                covcol.buffer = new ArrayBuffer(covcol.width * covcol.height * covcol.bytesPerTexel);
+                new Uint8Array(covcol.buffer).set(new Uint8Array(arrayBuffer, descriptor.buffers.bind1.offset));
+            } else {
+                covcol.buffer = arrayBuffer.slice(descriptor.buffers.bind1.offset, 
+                    descriptor.buffers.bind1.offset + covcol.width * covcol.height * covcol.bytesPerTexel);
+
+                sh.buffer = new ArrayBuffer(sh.width * sh.height * sh.bytesPerTexel);
+                new Uint8Array(sh.buffer).set(new Uint8Array(arrayBuffer, descriptor.buffers.bind2.offset));
+            }
+        }
+        
+        const sortBuffer = new Int32Array(pointCount * 4);
+        const dataview = new DataView(pospad.buffer);
+        let offset = 0, sortOffset = 0;
+        if (descriptor.quality == "high") {
+            for (let i = 0;i < pointCount; ++i) {
+                sortBuffer[sortOffset + 0] = Math.round(dataview.getFloat32(offset + 0, true) * 1000.0);
+                sortBuffer[sortOffset + 1] = Math.round(dataview.getFloat32(offset + 4, true) * 1000.0);
+                sortBuffer[sortOffset + 2] = Math.round(dataview.getFloat32(offset + 8, true) * 1000.0);
+                sortBuffer[sortOffset + 3] = 1000;
+                offset += 16;
+                sortOffset += 4;
+            }
+        } else {
+            for (let i = 0;i < pointCount; ++i) {
+                sortBuffer[sortOffset + 0] = Math.round(dataview.getFloat16(offset + 0, true) * 1000.0);
+                sortBuffer[sortOffset + 1] = Math.round(dataview.getFloat16(offset + 2, true) * 1000.0);
+                sortBuffer[sortOffset + 2] = Math.round(dataview.getFloat16(offset + 4, true) * 1000.0);
+                sortBuffer[sortOffset + 3] = 1000;
+                offset += 8;
+                sortOffset += 4;
+            }
+        }
+
+        if (sh.deg == 0) {
+            delete buffers.sh;
+        }
+        
+        return {
+            valid: true,
+            data: {
+                buffers: buffers,
+                gsType: 'ThreeD',
+                num: pointCount,
+                sortBuffer: sortBuffer.buffer,
+            },
+        }
+    }
 
     static getUniformDefines() {
         return `
@@ -282,7 +370,7 @@ export class GSKernel_3DGS {
         }
         const sh = buffers.sh;
         if (sh) {
-            const deg2 = sh.degree === 2;
+            const deg2 = sh.deg === 2;
             const range = (GSKernel_3DGS.unit8PackRangeMax - GSKernel_3DGS.unit8PackRangeMin).toFixed(5);
             const min = GSKernel_3DGS.unit8PackRangeMin.toFixed(5);
             res += `
@@ -326,7 +414,7 @@ export class GSKernel_3DGS {
         const sh = buffers.sh;
         let res = ``;
         if (sh) {
-            const deg2 = sh.degree === 2;
+            const deg2 = sh.deg === 2;
             res += `
             {
                 vec3 shd1[3];

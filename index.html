@@ -33,19 +33,57 @@
 			display: block;
 			/* remove default margin/padding */
 		}
+
+		.container {
+            position: absolute; /* 使用绝对定位 */
+            top: 0; /* 距离页面顶部 0px */
+            right: 0; /* 距离页面右侧 0px */
+			width: 120px; /* 设置容器宽度 */
+            height: 240px; /* 设置容器高度 */
+			padding: 20px;
+        }
+
+		select {
+            width: 120; /* 设置选择框宽度 */
+            height: 40px; /* 设置选择框高度 */
+            font-size: 20px; /* 设置字体大小 */
+            padding: 8px; /* 添加内边距 */
+            border: 1px solid #ccc; /* 添加边框 */
+            border-radius: 4px; /* 添加圆角 */
+        }
 	</style>
 </head>
 
 <body>
-	<canvas id="drop-zone"></canvas>
-	<script type="module">
-		
-		import ImmerScapeViewer from "./src/GSViewer.js";
-    	document.addEventListener('DOMContentLoaded', () => {
-    	    const viewer = new ImmerScapeViewer();
-    	    viewer.run();
-    		viewer.fetchSceneWithURL();
-    	});
+    <div class="container">
+        <form>
+            <label for="mySelect">Scenes</label>
+            <select id="mySelect" name="mySelect">
+                <option value="chair">chair</option>
+                <option value="horn">horn</option>
+                <option value="kitchen">kitchen</option>
+            </select>
+        </form>
+    </div>
+    <canvas id="drop-zone"></canvas>
+    <script type="module">
+        console.log("Running~");
+        import ImmerScapeViewer from "./src/GSViewer.js";
+
+		let viewer;
+        function handleSelection(event) {
+            const selectedOption = event.target.value;
+			viewer.fetchSceneWithURL(`/scenes/${selectedOption}.ply`);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const selectElement = document.getElementById('mySelect');
+            selectElement.addEventListener('change', handleSelection);
+
+            viewer = new ImmerScapeViewer();
+            viewer.run();
+            viewer.fetchSceneWithURL("/scenes/chair.ply");
+        });
     </script>
 </body>
 </html>
