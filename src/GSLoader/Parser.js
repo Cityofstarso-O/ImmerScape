@@ -1,6 +1,7 @@
 import { ParserType, LoadType, FileType } from "../Global.js";
 import { Utils } from "../Utils.js";
 import { PlyLoader } from "./TypeLoader/PlyLoader.js";
+import { SpbLoader } from "./TypeLoader/SpbLoader.js";
 
 console.log('Worker: Parser.js module loaded successfully');
 let isMobile;
@@ -19,6 +20,7 @@ const loadFromNative = function() {
         'ply': FileType.PLY,
         'spz': FileType.SPZ,
         'splat': FileType.SPLAT,
+        'spb': FileType.SPB,
     }
     return function(name, content) {
         const extension = Utils.extractFileExtension(name);
@@ -26,6 +28,8 @@ const loadFromNative = function() {
         switch (fileType) {
             case FileType.PLY:
                 return PlyLoader.loadFromNative(content, isMobile);
+            case FileType.SPB:
+                return SpbLoader.loadFromNative(content, isMobile);
             default:
                 return {
                     'valid': false,

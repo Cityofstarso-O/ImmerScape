@@ -6,3 +6,6 @@ test.html
 *.png
 node_modules
 dist
+scenes
+/*.zip
+__pycache__

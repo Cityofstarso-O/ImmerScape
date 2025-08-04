@@ -137,7 +137,6 @@ export class GSSorter {
         } else {
             this.sourceWasm = this.sharedMemoryForWorkers ? SorterWasm : SorterWasmNonShared;
         }
-        this.sourceWasm = SorterWasmNonShared;
     }
 
 }

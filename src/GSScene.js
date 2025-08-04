@@ -24,7 +24,7 @@ export class GSScene {
     setupTex(sceneName) {
         let bindIndex = 0;
         Object.values(this.scenes[sceneName].buffers).forEach(value => {
-            value.bind = bindIndex;
+            value.bind = value.bind || bindIndex;
             this.graphicsAPI.setupTexture(value);
             if (this.destroyBufOnSetupTex) {
                 value.buffer = null;

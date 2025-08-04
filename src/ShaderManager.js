@@ -22,6 +22,10 @@ export class ShaderManager {
             return vec4(r, g, b, a);
         }
 
+        vec4 uint2vec4(in uint packedData, vec4 min, vec4 max) {
+            return uint2rgba(packedData) * (max - min) + min;
+        }
+
         vec3 sRGBToLinear(vec3 srgb)
         {
           return mix(srgb / 12.92, pow((srgb + 0.055) / 1.055, vec3(2.2)), step(0.04045, srgb));
