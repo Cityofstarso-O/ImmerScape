@@ -4,7 +4,6 @@ import { PlyLoader } from "./TypeLoader/PlyLoader.js";
 import { SpbLoader } from "./TypeLoader/SpbLoader.js";
 
 console.log('Worker: Parser.js module loaded successfully');
-let isMobile;
 /*return = {
     valid: Boolean,
     error: String,
@@ -22,14 +21,15 @@ const loadFromNative = function() {
         'splat': FileType.SPLAT,
         'spb': FileType.SPB,
     }
-    return function(name, content) {
-        const extension = Utils.extractFileExtension(name);
+    return function(file, quality) {
+        const extension = Utils.extractFileExtension(file.name);
         const fileType = map2FileType[extension] || FileType.NONE;
+        file.type = fileType;
         switch (fileType) {
             case FileType.PLY:
-                return PlyLoader.loadFromNative(content, isMobile);
+                return PlyLoader.loadFromNative(file, quality);
             case FileType.SPB:
-                return SpbLoader.loadFromNative(content, isMobile);
+                return SpbLoader.loadFromNative(file);
             default:
                 return {
                     'valid': false,
@@ -40,36 +40,55 @@ const loadFromNative = function() {
     };
 }();
 
-self.onmessage = (event) => {
-    const message = event.data;
-    isMobile = message.isMobile;
-    let error = '';
-    switch (message.type) {
-        case LoadType.NATIVE:
-            switch (message.parser) {
-                case ParserType.CPU:
-                    console.log(`worker: handle ${message.name} using cpu`);
-                    const results = loadFromNative(message.name, message.data);
-                    if (results.valid) {
-                        const transferables = Object.values(results.data.buffers).map(value => value.buffer);
-                        self.postMessage({
-                            'valid': results.valid,
-                            'data': results.data,
-                        }, transferables);
-                        return;
-                    }
-                    error = results.error;
-                    break;
-                default:
-                    error = 'Unknown parser type: ' + message.parser;
-                    break;
-            }
-            break;
-        case LoadType.URL:
+const loadFromURL = async function(file, quality) {
+    const filePath = file.name;
+    const response = await fetch(filePath);
+    if (!response.ok) {
+        throw new Error(`无法找到文件: ${filePath} - 状态: ${response.status} ${response.statusText}`);
+    }
+    file.data = await response.arrayBuffer();
 
-            return;
+    return loadFromNative(file, quality);
+}
+
+self.onmessage = async (event) => {
+    const message = event.data;
+    let error = '';
+    const file = {
+        name: message.name,
+        data: message.data,
+        from: message.from,
+    }
+
+    switch (message.parser) {
+        case ParserType.CPU:
+            console.log(`worker: handle ${message.name} using cpu`);
+            let results;
+            if (LoadType.NATIVE == message.type) {
+                results = loadFromNative(file, message.quality);
+            } else if(LoadType.URL == message.type) {
+                results = await loadFromURL(file, message.quality);
+            } else {
+                results = {
+                    valid: false,
+                    error: "Unknown load type",
+                }
+            }
+            
+            if (results.valid) {
+                const transferables = Object.values(results.data.buffers).map(value => value.buffer);
+                transferables.push(results.data.file.data);
+                transferables.push(results.data.sortBuffer);
+                self.postMessage({
+                    'valid': results.valid,
+                    'data': results.data,
+                }, transferables);
+                return;
+            }
+            error = results.error;
+            break;
         default:
-            error = 'Unknown message type: ' + message.type;
+            error = 'Unknown parser type: ' + message.parser;
             break;
     }
     self.postMessage({

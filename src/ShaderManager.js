@@ -37,6 +37,8 @@ export class ShaderManager {
     `
 
     constructor(options, eventBus, graphicsAPI) {
+        this.cacheShaders = options.cacheShaders;
+
         this.debug = options.debug;
         this.debugTF = {
             outName: 'debugOutput',
@@ -52,6 +54,7 @@ export class ShaderManager {
         this.programs = {};
         this.uniforms = {};
         this.attributes = {};
+        this.vaos = {};
         this.vars = {
             'projectionMatrix': {
                 'value': new Float32Array(16),
@@ -126,8 +129,11 @@ export class ShaderManager {
                 'update': true,
             }
         };
-        this.vertexInput = {}
+        this.vbo = null;    // shared vertexBuffer
+
+        // state
         this.key = '';
+        this.ready = false;
     }
 
     updateUniform(name, value) {
@@ -165,10 +171,14 @@ export class ShaderManager {
     }
 
     onSortDone(indexArray) {
-        this.graphicsAPI.updateBuffer(this.vertexInput.instanceIndexBuffer, indexArray);
+        this.graphicsAPI.updateBuffer(this.vaos[this.key].instanceIndexBuffer, indexArray);
     }
 
     async onBuffersReady({ data, sceneName }) {
+        this.ready = false;
+        // if we do not use cache, keep old key to delete later
+        const oldKey = this.key;
+
         let gsKernel;
         switch (GSType[data.gsType]) {
             case GSType.ThreeD:
@@ -180,20 +190,33 @@ export class ShaderManager {
             default:
                 break;
         }
-        const vs = this.createVS(data.buffers, gsKernel);
-        const fs = this.createFS();
-        //console.log(vs);
-        //console.log(fs);
-        const key = data.gsType;
-        this.createProgram(key, vs, fs, this.debug ? [this.debugTF.outName] : null);
-        this.vertexInput = this.graphicsAPI.setupVAO(this.getAttribLoc(key, 'inPosition'), this.getAttribLoc(key, 'splatIndex'), data.num);
-        this.key = key;
+        const key = data.gsType + '/' + data.quality;
+
+        // if we have no cache for this program, build one
+        if (!this.programs[key]) {
+            const vs = this.createVS(data.buffers, gsKernel);
+            const fs = this.createFS();
+            //console.log(vs);
+            //console.log(fs);
+            this.createProgram(key, vs, fs, this.debug ? [this.debugTF.outName] : null);
+            this.vaos[key] = this.graphicsAPI.setupVAO(this.getAttribLoc(key, 'inPosition'), this.getAttribLoc(key, 'splatIndex'), data.num, this.vbo);
+            this.vbo = this.vaos[key].vertexBuffer;
+        } else {
+            this.graphicsAPI.rebuildInstanceBuffer2VAO(this.vaos[key], this.getAttribLoc(key, 'splatIndex'), data.num);
+        }
+        
         if (this.debug) {
             const size = data.num * 4 * 4 * 4;
             const { tf, buffer } = this.graphicsAPI.setupTransformFeedback(size);
             this.debugTF.tf = tf;
             this.debugTF.buffer = buffer;
             this.debugTF.size = size;
+        }
+
+        this.key = key;
+        this.ready = true;
+        if (!this.cacheShaders && this.key != oldKey) {
+            this.deleteProgram(oldKey);
         }
     }
 
@@ -338,7 +361,7 @@ export class ShaderManager {
             console.error(`Fail to create program for ${key}`);
         }
         this.programs[key] = program;
-        this.cacheLocations(key, program);
+        this.saveLocations(key);
     }
 
     setPipelineAndBind(key = null) {
@@ -349,7 +372,7 @@ export class ShaderManager {
             return;
         }
         this.graphicsAPI.updateProgram(program);
-        this.graphicsAPI.updateVertexInput(this.vertexInput.vao);
+        this.graphicsAPI.updateVertexInput(this.vaos[key].vao);
     }
 
     getUniformLoc(key, name) {
@@ -376,23 +399,28 @@ export class ShaderManager {
         return locMap !== undefined ? locMap : -1;
     }
 
-    deleteProgram(key) {
+    async deleteProgram(key) {
         const program = this.programs[key];
-        this.graphicsAPI.deleteProgram(program);
-        this.programs[key] = null;
-        this.uniforms[key] = null;
-        this.attributes[key] = null;
-    }
-
-    deleteAllProgram() {
-        const keys = Object.keys(this.programs);
-
-        for (const key of keys) {
-            this.deleteProgram(key);
+        if (program) {
+            this.graphicsAPI.deleteProgram(program);
+            this.programs[key] = undefined;
+            this.uniforms[key] = undefined;
+            this.attributes[key] = undefined;
+            this.graphicsAPI.deleteVAO(this.vaos[key].vao);
+            this.graphicsAPI.deleteBuffer(this.vaos[key].instanceIndexBuffer);
+            this.vaos[key] = undefined;
         }
     }
 
-    cacheLocations(key) {
+    async deleteAllProgram() {
+        const keys = Object.keys(this.programs);
+
+        for (const key of keys) {
+            await this.deleteProgram(key);
+        }
+    }
+
+    saveLocations(key) {
         const program = this.programs[key];
         this.uniforms[key] = this.graphicsAPI.getUniform(program);
         this.attributes[key] = this.graphicsAPI.getAttrib(program);

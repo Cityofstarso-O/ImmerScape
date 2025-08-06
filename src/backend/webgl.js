@@ -37,6 +37,12 @@ export class WebGL {
         return capturedData;
     }
 
+    deleteBuffer(buffer) {
+        if (buffer) {
+            this.graphicsAPI.deleteBuffer(buffer);
+        }
+    }
+
     updateUniform(loc, type, value, transpose = null) {
         if (transpose !== null) {
             this.graphicsAPI['uniform' + type](loc, transpose, value);
@@ -115,7 +121,6 @@ export class WebGL {
 
         return function(desc) {
             const gl = this.graphicsAPI;
-            console.log(desc)
             const texture = gl.createTexture();
             gl.activeTexture(gl.TEXTURE0 + desc.bind);
             gl.bindTexture(gl.TEXTURE_2D, texture);
@@ -143,14 +148,25 @@ export class WebGL {
         }
     }();
 
-    setupVAO(vertexPosLocation, instanceIndexLocation, splatCount) {
+    deleteTexture(tex) {
+        const gl = this.graphicsAPI;
+        if (tex) {
+            gl.deleteTexture(tex);
+            tex = null;
+        }
+    }
+
+    setupVAO(vertexPosLocation, instanceIndexLocation, splatCount, vertexBuffer = null) {
         const gl = this.graphicsAPI;
         const vertexPositions = new Float32Array([
             -1.0, -1.0, 0.0, 1.0, -1.0, 0.0, 1.0, 1.0, 0.0, -1.0, 1.0, 0.0
         ]);
-        const vertexPosBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, vertexPosBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, vertexPositions, gl.STATIC_DRAW);
+        let vbo = vertexBuffer;
+        if (!vbo) {
+            vbo = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+            gl.bufferData(gl.ARRAY_BUFFER, vertexPositions, gl.STATIC_DRAW);
+        }
 
         const instanceIndexBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, instanceIndexBuffer);
@@ -159,7 +175,7 @@ export class WebGL {
         const vao = gl.createVertexArray();
         gl.bindVertexArray(vao);
 
-        gl.bindBuffer(gl.ARRAY_BUFFER, vertexPosBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
         gl.enableVertexAttribArray(vertexPosLocation);
         gl.vertexAttribPointer(vertexPosLocation, 3, gl.FLOAT, false, 0, 0);
             
@@ -173,9 +189,37 @@ export class WebGL {
 
         return {
             'vao': vao,
-            'vertexPosBuffer': vertexPosBuffer,
+            'vertexBuffer': vbo,
             'instanceIndexBuffer': instanceIndexBuffer,
         };
+    }
+
+    rebuildInstanceBuffer2VAO(vertexInput, instanceIndexLocation, splatCount) {
+        const gl = this.graphicsAPI;
+        gl.deleteBuffer(vertexInput.instanceIndexBuffer);
+
+        const newInstanceIndexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, newInstanceIndexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, splatCount * Uint32Array.BYTES_PER_ELEMENT, gl.DYNAMIC_DRAW);
+
+        gl.bindVertexArray(vertexInput.vao);
+        gl.bindBuffer(gl.ARRAY_BUFFER, newInstanceIndexBuffer);
+        gl.enableVertexAttribArray(instanceIndexLocation);
+        gl.vertexAttribIPointer(instanceIndexLocation, 1, gl.UNSIGNED_INT, 0, 0);
+        gl.vertexAttribDivisor(instanceIndexLocation, 1);
+
+        gl.bindVertexArray(null);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+        vertexInput.instanceIndexBuffer = newInstanceIndexBuffer;
+    }
+
+    deleteVAO(vao) {
+        const gl = this.graphicsAPI;
+        if (vao) {
+            gl.deleteVertexArray(vao);
+            vao = null;
+        }
     }
 
     setupProgram(vsSrc, fsSrc, feedbackVaryings = null) {
@@ -268,6 +312,7 @@ export class WebGL {
     deleteProgram(program) {
         if (program) {
             this.graphicsAPI.deleteProgram(program);
+            program = null;
         }
     }
 }

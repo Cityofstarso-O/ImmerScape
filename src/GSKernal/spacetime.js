@@ -150,14 +150,15 @@ export class GSKernel_SPACETIME {
 
     static parsePlyData2Buffers = function() {
 
-        return function(pointCount, dataview, quality = 'medium') {
+        return function(pointCount, file, quality = 'medium') {
             // a little hack, pointCount shouldn't be too large (<= 8,388,608)
             if (pointCount > 4096 * 2048) {
                 console.warn(`pointCount ${pointCount} is too large and is clamped to 8,388,608`);
                 pointCount = 4096 * 2048;
             }
+            const dataview = new DataView(file.data, file.headerEnd);
 
-            let currentConfig = GSKernel_SPACETIME.config[quality] || config.low;
+            let currentConfig = GSKernel_SPACETIME.config[quality];
             const pospad = {...currentConfig.pospad};
             const rot = {...currentConfig.rot};
             const other = {...currentConfig.other};
@@ -358,16 +359,19 @@ export class GSKernel_SPACETIME {
                 valid: true,
                 data: {
                     buffers: buffers,
+                    file: file,
                     gsType: 'SPACETIME',
                     num: pointCount,
                     sortBuffer: sortBuffer.buffer,
+                    quality: quality,
                 },
             }
         }
     }();
 
-    static parseSpbData2Buffers(descriptor, arrayBuffer) {
+    static parseSpbData2Buffers(descriptor, file) {
         const self = GSKernel_SPACETIME;
+        const arrayBuffer = file.data;
         const quality = descriptor.quality;
         const pointCount = descriptor.num;
         const buffers = {...GSKernel_SPACETIME.config[quality]};
@@ -375,20 +379,40 @@ export class GSKernel_SPACETIME {
         const rot = buffers.rot;
         const other = buffers.other;
 
+        pospad.offset = descriptor.buffers.bind0.offset;
+        rot.offset = descriptor.buffers.bind1.offset;
+        other.offset = descriptor.buffers.bind2.offset;
+
         Object.assign(pospad, Utils.computeTexSize(pospad.texelPerSplat * pointCount));
         Object.assign(rot, Utils.computeTexSize(rot.texelPerSplat * pointCount));
         Object.assign(other, Utils.computeTexSize(other.texelPerSplat * pointCount));
 
-        pospad.buffer = arrayBuffer.slice(descriptor.buffers.bind0.offset, 
-            descriptor.buffers.bind0.offset + pospad.width * pospad.height * pospad.bytesPerTexel);
-        rot.buffer = arrayBuffer.slice(descriptor.buffers.bind1.offset, 
-            descriptor.buffers.bind1.offset + rot.width * rot.height * rot.bytesPerTexel);
         if (descriptor.pad) {
-            other.buffer = arrayBuffer.slice(descriptor.buffers.bind2.offset, 
-                descriptor.buffers.bind2.offset + other.width * other.height * other.bytesPerTexel);
+            pospad.buffer = arrayBuffer.slice(pospad.offset, pospad.offset + pospad.width * pospad.height * pospad.bytesPerTexel);
+            rot.buffer = arrayBuffer.slice(rot.offset, rot.offset + rot.width * rot.height * rot.bytesPerTexel);
+            other.buffer = arrayBuffer.slice(other.offset, other.offset + other.width * other.height * other.bytesPerTexel);
         } else {
-            other.buffer = new ArrayBuffer(other.width * other.height * other.bytesPerTexel);
-            new Uint8Array(other.buffer).set(new Uint8Array(arrayBuffer, descriptor.buffers.bind2.offset));
+            let sliceEnd = pospad.offset + pospad.width * pospad.height * pospad.bytesPerTexel;
+            if (sliceEnd <= arrayBuffer.byteLength) {
+                pospad.buffer = arrayBuffer.slice(pospad.offset, sliceEnd);
+            } else {
+                pospad.buffer = new ArrayBuffer(pospad.width * pospad.height * pospad.bytesPerTexel);
+                new Uint8Array(pospad.buffer).set(new Uint8Array(arrayBuffer, pospad.offset));
+            }
+            sliceEnd = rot.offset + rot.width * rot.height * rot.bytesPerTexel;
+            if (sliceEnd <= arrayBuffer.byteLength) {
+                rot.buffer = arrayBuffer.slice(rot.offset, sliceEnd);
+            } else {
+                rot.buffer = new ArrayBuffer(rot.width * rot.height * rot.bytesPerTexel);
+                new Uint8Array(rot.buffer).set(new Uint8Array(arrayBuffer, rot.offset));
+            }
+            sliceEnd = other.offset + other.width * other.height * other.bytesPerTexel;
+            if (sliceEnd <= arrayBuffer.byteLength) {
+                other.buffer = arrayBuffer.slice(other.offset, sliceEnd);
+            } else {
+                other.buffer = new ArrayBuffer(other.width * other.height * other.bytesPerTexel);
+                new Uint8Array(other.buffer).set(new Uint8Array(arrayBuffer, other.offset));
+            }
         }
 
         const sortBuffer = new Float32Array(pointCount * 13);
@@ -458,9 +482,11 @@ export class GSKernel_SPACETIME {
             valid: true,
             data: {
                 buffers: buffers,
+                file: file,
                 gsType: 'SPACETIME',
                 num: pointCount,
                 sortBuffer: sortBuffer.buffer,
+                quality: quality,
             },
         }
     }

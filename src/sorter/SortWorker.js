@@ -89,6 +89,11 @@ self.onmessage = async (e) => {
         }
         sort(sortCount, renderCount, e.data.sort.modelViewProj, usePrecomputedDistances, e.data.sort.timestamp);
     } else if (e.data.init) {
+        if (wasmInstance || wasmMemory) {
+            wasmInstance = null;
+            wasmMemory = null;
+        }
+
         const data = e.data.init;
         // Yep, this is super hacky and gross :(
         splatCount = data.splatCount;

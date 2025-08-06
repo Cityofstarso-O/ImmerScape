@@ -6,9 +6,9 @@ export class GSSorter {
         this.enableSIMDInSort = options.enableSIMDInSort;
         this.gpuAcceleratedSort = options.gpuAcceleratedSort;
 
-        this.worker = new Worker(new URL('SortWorker.js', import.meta.url), { type: 'module' });
+        this.worker = new Worker(new URL('./SortWorker.js', import.meta.url), { type: 'module' });
         this.sourceWasm = '';
-        this.initialized = false;
+        this.ready = false;
         this.sortRunning = false;
 
         this.sortWorkerSortedIndexes = null;
@@ -19,7 +19,12 @@ export class GSSorter {
         this.eventBus.on('buffersReady', this.onBuffersReady.bind(this));
     }
 
+    getLastSortTime() {
+        return this.lastSortTime;
+    }
+
     async onBuffersReady({ data, sceneName }) {
+        this.ready = false;
         const splatCount = data.num;
         this.initSorter(splatCount);
 
@@ -114,7 +119,7 @@ export class GSSorter {
                 }
                 for (let i = 0; i < splatCount; i++) this.sortWorkerIndexesToSort[i] = i;
 
-                this.initialized = true;
+                this.ready = true;
                 console.log('Sorting web worker initialized successfully.');
             }
         };
@@ -126,10 +131,10 @@ export class GSSorter {
             console.error('Error object:', event.error);
         };
 
-        const SorterWasm = 'wasm/sorter.wasm';
-        const SorterWasmNoSIMD = 'wasm/sorter_no_simd.wasm';
-        const SorterWasmNoSIMDNonShared = 'wasm/sorter_no_simd_non_shared.wasm';
-        const SorterWasmNonShared = 'wasm/sorter_non_shared.wasm';
+        const SorterWasm = './wasm/sorter.wasm';
+        const SorterWasmNoSIMD = './wasm/sorter_no_simd.wasm';
+        const SorterWasmNoSIMDNonShared = './wasm/sorter_no_simd_non_shared.wasm';
+        const SorterWasmNonShared = './wasm/sorter_non_shared.wasm';
         this.sourceWasm = SorterWasm;
 
         if (!this.enableSIMDInSort) {
