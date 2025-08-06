@@ -1,8 +1,116 @@
-import { Quaternion, Matrix3, Matrix4, DataUtils } from './external/three.module.js';
+
+// Fast Half Float Conversions, http://www.fox-toolkit.org/ftp/fasthalffloatconversion.pdf
+const _tables = /*@__PURE__*/ _generateTables();
+function _generateTables() {
+	// float32 to float16 helpers
+	const buffer = new ArrayBuffer( 4 );
+	const floatView = new Float32Array( buffer );
+	const uint32View = new Uint32Array( buffer );
+	const baseTable = new Uint32Array( 512 );
+	const shiftTable = new Uint32Array( 512 );
+	for ( let i = 0; i < 256; ++ i ) {
+		const e = i - 127;
+		// very small number (0, -0)
+		if ( e < - 27 ) {
+			baseTable[ i ] = 0x0000;
+			baseTable[ i | 0x100 ] = 0x8000;
+			shiftTable[ i ] = 24;
+			shiftTable[ i | 0x100 ] = 24;
+			// small number (denorm)
+		} else if ( e < - 14 ) {
+			baseTable[ i ] = 0x0400 >> ( - e - 14 );
+			baseTable[ i | 0x100 ] = ( 0x0400 >> ( - e - 14 ) ) | 0x8000;
+			shiftTable[ i ] = - e - 1;
+			shiftTable[ i | 0x100 ] = - e - 1;
+			// normal number
+		} else if ( e <= 15 ) {
+			baseTable[ i ] = ( e + 15 ) << 10;
+			baseTable[ i | 0x100 ] = ( ( e + 15 ) << 10 ) | 0x8000;
+			shiftTable[ i ] = 13;
+			shiftTable[ i | 0x100 ] = 13;
+			// large number (Infinity, -Infinity)
+		} else if ( e < 128 ) {
+			baseTable[ i ] = 0x7c00;
+			baseTable[ i | 0x100 ] = 0xfc00;
+			shiftTable[ i ] = 24;
+			shiftTable[ i | 0x100 ] = 24;
+			// stay (NaN, Infinity, -Infinity)
+		} else {
+			baseTable[ i ] = 0x7c00;
+			baseTable[ i | 0x100 ] = 0xfc00;
+			shiftTable[ i ] = 13;
+			shiftTable[ i | 0x100 ] = 13;
+		}
+	}
+	// float16 to float32 helpers
+	const mantissaTable = new Uint32Array( 2048 );
+	const exponentTable = new Uint32Array( 64 );
+	const offsetTable = new Uint32Array( 64 );
+	for ( let i = 1; i < 1024; ++ i ) {
+		let m = i << 13; // zero pad mantissa bits
+		let e = 0; // zero exponent
+		// normalized
+		while ( ( m & 0x00800000 ) === 0 ) {
+			m <<= 1;
+			e -= 0x00800000; // decrement exponent
+		}
+		m &= ~ 0x00800000; // clear leading 1 bit
+		e += 0x38800000; // adjust bias
+		mantissaTable[ i ] = m | e;
+	}
+	for ( let i = 1024; i < 2048; ++ i ) {
+		mantissaTable[ i ] = 0x38000000 + ( ( i - 1024 ) << 13 );
+	}
+	for ( let i = 1; i < 31; ++ i ) {
+		exponentTable[ i ] = i << 23;
+	}
+	exponentTable[ 31 ] = 0x47800000;
+	exponentTable[ 32 ] = 0x80000000;
+	for ( let i = 33; i < 63; ++ i ) {
+		exponentTable[ i ] = 0x80000000 + ( ( i - 32 ) << 23 );
+	}
+	exponentTable[ 63 ] = 0xc7800000;
+	for ( let i = 1; i < 64; ++ i ) {
+		if ( i !== 32 ) {
+			offsetTable[ i ] = 1024;
+		}
+	}
+	return {
+		floatView: floatView,
+		uint32View: uint32View,
+		baseTable: baseTable,
+		shiftTable: shiftTable,
+		mantissaTable: mantissaTable,
+		exponentTable: exponentTable,
+		offsetTable: offsetTable
+	};
+
+}
+
+// float32 to float16
+function toHalfFloat( val ) {
+	//if ( Math.abs( val ) > 65504 ) console.warn( 'THREE.DataUtils.toHalfFloat(): Value out of range.' );
+	val = Utils.clamp( val, - 65504, 65504 );
+	_tables.floatView[ 0 ] = val;
+	const f = _tables.uint32View[ 0 ];
+	const e = ( f >> 23 ) & 0x1ff;
+	return _tables.baseTable[ e ] + ( ( f & 0x007fffff ) >> _tables.shiftTable[ e ] );
+}
+
+// float16 to float32
+function fromHalfFloat( val ) {
+	const m = val >> 10;
+	_tables.uint32View[ 0 ] = _tables.mantissaTable[ _tables.offsetTable[ m ] + ( val & 0x3ff ) ] + _tables.exponentTable[ m ];
+	return _tables.floatView[ 0 ];
+}
 
 export class Utils {
-    static f2fp162uint16 = DataUtils.toHalfFloat.bind(DataUtils);
-    static uint162fp162f = DataUtils.fromHalfFloat.bind(DataUtils);
+    static f2fp162uint16 = toHalfFloat;
+    static uint162fp162f = fromHalfFloat;
+
+    static getRandomUID() {
+        return crypto.randomUUID();
+    }
 
     static sigmoid(x) {
         return 1 / (1 + Math.exp(-x));
@@ -47,7 +155,18 @@ export class Utils {
     }
 
     static computeCov3dPack2fp16 = function() {
-        const tempMatrix4 = new Matrix4();
+        class Matrix3 {
+            constructor( n11, n12, n13, n21, n22, n23, n31, n32, n33 ) {Matrix3.prototype.isMatrix3 = true;this.elements = [1, 0, 0, 0, 1, 0, 0, 0, 1];if ( n11 !== undefined ) {this.set( n11, n12, n13, n21, n22, n23, n31, n32, n33 );}}
+            set( n11, n12, n13, n21, n22, n23, n31, n32, n33 ) {const te = this.elements;te[ 0 ] = n11; te[ 1 ] = n21; te[ 2 ] = n31;te[ 3 ] = n12; te[ 4 ] = n22; te[ 5 ] = n32;te[ 6 ] = n13; te[ 7 ] = n23; te[ 8 ] = n33;return this;}
+            identity() {this.set(1, 0, 0,0, 1, 0,0, 0, 1);return this;}
+            copy( m ) {const te = this.elements;const me = m.elements;te[ 0 ] = me[ 0 ]; te[ 1 ] = me[ 1 ]; te[ 2 ] = me[ 2 ];te[ 3 ] = me[ 3 ]; te[ 4 ] = me[ 4 ]; te[ 5 ] = me[ 5 ];te[ 6 ] = me[ 6 ]; te[ 7 ] = me[ 7 ]; te[ 8 ] = me[ 8 ];return this;}
+            multiply( m ) {return this.multiplyMatrices( this, m );}
+            premultiply( m ) {return this.multiplyMatrices( m, this );}
+            multiplyMatrices( a, b ) {const ae = a.elements;const be = b.elements;const te = this.elements;const a11 = ae[ 0 ], a12 = ae[ 3 ], a13 = ae[ 6 ];const a21 = ae[ 1 ], a22 = ae[ 4 ], a23 = ae[ 7 ];const a31 = ae[ 2 ], a32 = ae[ 5 ], a33 = ae[ 8 ];const b11 = be[ 0 ], b12 = be[ 3 ], b13 = be[ 6 ];const b21 = be[ 1 ], b22 = be[ 4 ], b23 = be[ 7 ];const b31 = be[ 2 ], b32 = be[ 5 ], b33 = be[ 8 ];te[ 0 ] = a11 * b11 + a12 * b21 + a13 * b31;te[ 3 ] = a11 * b12 + a12 * b22 + a13 * b32;te[ 6 ] = a11 * b13 + a12 * b23 + a13 * b33;te[ 1 ] = a21 * b11 + a22 * b21 + a23 * b31;te[ 4 ] = a21 * b12 + a22 * b22 + a23 * b32;te[ 7 ] = a21 * b13 + a22 * b23 + a23 * b33;te[ 2 ] = a31 * b11 + a32 * b21 + a33 * b31;te[ 5 ] = a31 * b12 + a32 * b22 + a33 * b32;te[ 8 ] = a31 * b13 + a32 * b23 + a33 * b33;return this;}
+            transpose() {let tmp;const m = this.elements;tmp = m[ 1 ]; m[ 1 ] = m[ 3 ]; m[ 3 ] = tmp;tmp = m[ 2 ]; m[ 2 ] = m[ 6 ]; m[ 6 ] = tmp;tmp = m[ 5 ]; m[ 5 ] = m[ 7 ]; m[ 7 ] = tmp;return this;}
+            fromArray( array, offset = 0 ) {for ( let i = 0; i < 9; i ++ ) {this.elements[ i ] = array[ i + offset ];}return this;}
+            clone() {return new this.constructor().fromArray( this.elements );}
+        }
         const scaleMatrix = new Matrix3();
         const rotationMatrix = new Matrix3();
         const covarianceMatrix = new Matrix3();
@@ -56,11 +175,26 @@ export class Utils {
         const transform3x3Transpose = new Matrix3();
 
         return function(sx, sy, sz, rx, ry, rz, rw, out, offset = 0, transform = null) {
-            tempMatrix4.makeScale(sx, sy, sz);
-            scaleMatrix.setFromMatrix4(tempMatrix4);
+            scaleMatrix.elements[0] = sx;
+            scaleMatrix.elements[4] = sy;
+            scaleMatrix.elements[8] = sz;
 
-            tempMatrix4.makeRotationFromQuaternion(new Quaternion(rx, ry, rz, rw).normalize());
-            rotationMatrix.setFromMatrix4(tempMatrix4);
+            const inv_length = 1 / Math.sqrt( rx * rx + ry * ry + rz * rz + rw * rw );
+            const x = rx * inv_length, y = ry * inv_length, z = rz * inv_length, w = rw * inv_length;
+            const x2 = x + x,	y2 = y + y, z2 = z + z;
+		    const xx = x * x2, xy = x * y2, xz = x * z2;
+		    const yy = y * y2, yz = y * z2, zz = z * z2;
+		    const wx = w * x2, wy = w * y2, wz = w * z2;
+            const te = rotationMatrix.elements;
+            te[0] = ( 1 - ( yy + zz ) );
+		    te[1] = ( xy + wz );
+		    te[2] = ( xz - wy );
+		    te[3] = ( xy - wz );
+		    te[4] = ( 1 - ( xx + zz ) );
+		    te[5] = ( yz + wx );
+		    te[6] = ( xz + wy );
+		    te[7] = ( yz - wx );
+		    te[8] = ( 1 - ( xx + yy ) );
 
             covarianceMatrix.copy(rotationMatrix).multiply(scaleMatrix);
             transformedCovariance.copy(covarianceMatrix).transpose().premultiply(covarianceMatrix);

@@ -5,21 +5,23 @@ import { GSKernel_SPACETIME } from "../../GSKernal/spacetime.js";
 export class SpbLoader {
     static splitHeaderAndData(arrayBuffer) {
         const contentStart = new TextDecoder('utf-8').decode(new Uint8Array(arrayBuffer, 0, Math.min(1600, arrayBuffer.byteLength)));
-        const headerOffset = contentStart.indexOf('end_header') + 'end_header'.length + 1;
+        const headerEnd = contentStart.indexOf('end_header') + 'end_header'.length + 1;
         const [header] = contentStart.split('end_header');
-        return { header, headerOffset };
+        return { header, headerEnd };
     }
 
-    static loadFromNative(arrayBuffer, isMobile) {
-        const { header, headerOffset } = SpbLoader.splitHeaderAndData(arrayBuffer);
-        const descriptor = SpbLoader.parseHeader(header, headerOffset);
+    static loadFromNative(file) {
+        const { header, headerEnd } = SpbLoader.splitHeaderAndData(file.data);
+        file.headerEnd = headerEnd;
+        const descriptor = SpbLoader.parseHeader(header, headerEnd);
+        file.pad = descriptor.pad;
         let res;
         switch (GSType[descriptor.gsType]) {
             case GSType.ThreeD:
-                res = GSKernel_3DGS.parseSpbData2Buffers(descriptor, arrayBuffer);
+                res = GSKernel_3DGS.parseSpbData2Buffers(descriptor, file);
                 break;
             case GSType.SPACETIME:
-                res = GSKernel_SPACETIME.parseSpbData2Buffers(descriptor, arrayBuffer);
+                res = GSKernel_SPACETIME.parseSpbData2Buffers(descriptor, file);
                 break;
             default:
                 res = {
@@ -31,11 +33,11 @@ export class SpbLoader {
         return res;
     }
 
-    static parseHeader(header, headerOffset) {
+    static parseHeader(header, headerEnd) {
         const lines = header.split('\n');
         const descriptor = { buffers: {} };
         let bindIndex = 0;
-        let offset = headerOffset;
+        let offset = headerEnd;
 
         for (const line of lines) {
             if (line.trim() === "end_header") {

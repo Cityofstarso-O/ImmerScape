@@ -1,89 +1,391 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
-	<meta charset="utf-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-	<title>WebGS</title>
-	<style>
-		:root {
-			color-scheme: light dark;
-		}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>全屏 WebGL2 三角形与 Vuetify UI</title>
 
-		html,
-		body {
-			margin: 0;
-			/* remove default margin */
-			padding: 0;
-			/* remove default padding */
-			width: 100%;
-			/* make body fill the browser window */
-			height: 100%;
-			/* make body fill the browser window */
-			display: flex;
-			/* center the canvas */
-			justify-content: center;
-			align-items: center;
-		}
-
-		canvas {
-			width: 100%;
-			/* make canvas fill the body */
-			height: 100%;
-			/* make canvas fill the body */
-			display: block;
-			/* remove default margin/padding */
-		}
-
-		.container {
-            position: absolute; /* 使用绝对定位 */
-            top: 0; /* 距离页面顶部 0px */
-            right: 0; /* 距离页面右侧 0px */
-			width: 120px; /* 设置容器宽度 */
-            height: 240px; /* 设置容器高度 */
-			padding: 20px;
+    <!-- 1. 引入必要的库 (CSS) -->
+    <link href="https://cdn.jsdelivr.net/npm/vuetify@3.6.10/dist/vuetify.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css" rel="stylesheet">
+    
+    <style>
+        /* 保证全屏的关键 CSS */
+        html, body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        #app {
+            height: 100vh;
+            width: 100vw;
+        }
+        #drop-zone {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+        .fps-counter {
+            position: fixed; /* 使用 fixed 确保相对于浏览器窗口定位 */
+            top: 16px;
+            right: 16px;
+            color: white;
+            font-size: 16px;
+            font-family: monospace;
+            background-color: rgba(0, 0, 0, 0.5); /* 半透明背景，增强可读性 */
+            padding: 4px 8px;
+            border-radius: 4px;
+            z-index: 10; /* 确保在所有元素之上 */
+            pointer-events: none; /* 让鼠标可以“穿透”它，操作下面的canvas */
+        }
+        /* 用于 pointerLock 的遮罩层 */
+        #blocker {
+            position: absolute;
+            width: 50%;
+            height: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 3px solid #ffffff;
+            border-radius: 15px;
+            box-sizing: border-box;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 5; /* 在 Canvas 之上，UI 之下 */
+        }
+        #instructions {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            font-size: 14px;
+            cursor: pointer;
+            color: white;
+            font-family: sans-serif;
+        }
+        .instructions-card {
+            /* 使用 RGBA 设置带透明度的背景色 */
+            background-color: rgba(30, 30, 30, 0.8) !important;
+            /* 可选：添加背景模糊（毛玻璃效果），增加高级感 */
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            color: #F5F5F5;
         }
 
-		select {
-            width: 120; /* 设置选择框宽度 */
-            height: 40px; /* 设置选择框高度 */
-            font-size: 20px; /* 设置字体大小 */
-            padding: 8px; /* 添加内边距 */
-            border: 1px solid #ccc; /* 添加边框 */
-            border-radius: 4px; /* 添加圆角 */
+        /* 为子标题设置更亮的颜色以提高对比度 */
+        .v-list-subheader {
+            color: rgba(245, 245, 245, 0.85);
         }
-	</style>
+    </style>
 </head>
-
 <body>
-    <div class="container">
-        <form>
-            <label for="mySelect">Scenes</label>
-            <select id="mySelect" name="mySelect">
-                <option value="chair">chair</option>
-                <option value="horn">horn</option>
-                <option value="kitchen">kitchen</option>
-            </select>
-        </form>
+
+    <div id="app">
+        <v-app>
+            <!-- Canvas 作为背景层 -->
+            <canvas id="drop-zone" ref="myCanvas"></canvas>
+            <!-- pointerLock Controls 的遮罩层, 使用 v-show 替代 v-if -->
+            <div id="blocker" ref="blocker" v-show="controlMode === 'pointerLock'">
+                <!-- 使用 @click 替代 addEventListener -->
+                <div id="instructions" @click="lockPointer">
+                    <p style="font-size: 36px">点击以开始</p>
+                    <p>
+                        W, A, S, D = 移动<br/>
+                        鼠标 = 环顾四周<br/>
+                        ESC = 解锁鼠标
+                    </p>
+                </div>
+            </div>
+            <!-- FPS 计数器，由 v-if 控制显示 -->
+            <div v-if="showFPS" class="fps-counter">
+                FPS: {{ Math.round(currentFPS) }}
+            </div>
+            <!-- 隐藏的文件输入框 -->
+            <input type="file" ref="fileInput" @change="onFileSelected" style="display: none;" />
+            <!-- 左上角菜单 -->
+            <v-menu v-model="menu" location="bottom">
+                <template v-slot:activator="{ props }">
+                    <v-btn
+                        v-bind="props"
+                        icon="mdi-dots-vertical"
+                        location="top start"
+                        position="fixed"
+                        size="large"
+                        class="ma-4"
+                        elevation="8"
+                        style="z-index: 1;"
+                    ></v-btn>
+                </template>
+    
+                <v-list>
+                    <!-- 控制器切换子菜单，仅在 PC 端显示 -->
+                    <v-list-item
+                        v-for="(item, index) in items"
+                        :key="index"
+                        @click="handleItemClick(item)"
+                    >
+                        <template v-slot:prepend>
+                          <v-icon :icon="item.icon"></v-icon>
+                        </template>
+                        <v-list-item-title>{{ item.title }}</v-list-item-title>
+                    </v-list-item>
+                    <!-- 控制器切换子菜单，仅在 PC 端显示 -->
+                    <v-list-group value="Controls" v-if="!isMobile">
+                        <template v-slot:activator="{ props }">
+                            <v-list-item v-bind="props" prepend-icon="mdi-gamepad-variant" title="控制模式"></v-list-item>
+                        </template>
+                        <v-list-item @click="toggleControls('orbit')" title="轨道控制">
+                            <template v-slot:append><v-icon v-if="controlMode === 'orbit'">mdi-check</v-icon></template>
+                        </v-list-item>
+                        <v-list-item @click="toggleControls('pointerLock')" title="第一人称">
+                            <template v-slot:append><v-icon v-if="controlMode === 'pointerLock'">mdi-check</v-icon></template>
+                        </v-list-item>
+                        <v-list-item @click="toggleControls('fly')" title="飞行模式">
+                            <template v-slot:append><v-icon v-if="controlMode === 'fly'">mdi-check</v-icon></template>
+                        </v-list-item>
+                    </v-list-group>
+                    <!-- 选择场景的子菜单 -->
+                    <v-list-group value="Scenes">
+                        <template v-slot:activator="{ props }">
+                            <v-list-item
+                                v-bind="props"
+                                prepend-icon="mdi-folder-multiple-image"
+                                title="选择场景"
+                            ></v-list-item>
+                        </template>
+                        <v-list-item
+                            v-for="sceneName in sceneFiles"
+                            :key="sceneName"
+                            :title="sceneName"
+                            @click="loadScene(sceneName)"
+                        ></v-list-item>
+                    </v-list-group>
+                    <!-- 选择质量的子菜单 -->
+                    <v-list-group value="Quality">
+                        <template v-slot:activator="{ props }">
+                            <v-list-item
+                                v-bind="props"
+                                prepend-icon="mdi-tune-variant"
+                                title="渲染质量"
+                            ></v-list-item>
+                        </template>
+
+                        <v-list-item
+                            v-for="option in qualityOptions"
+                            :key="option.id"
+                            :title="option.title"
+                            @click="setQuality(option.id)"
+                        >
+                            <template v-slot:append>
+                                <!-- 如果当前质量与选项匹配，显示一个勾 -->
+                                <v-icon v-if="quality === option.id">mdi-check</v-icon>
+                            </template>
+                        </v-list-item>
+                    </v-list-group>
+                    <!-- 操作说明 -->
+                    <v-list-item 
+                        @click="showInstructions = true" 
+                        prepend-icon="mdi-help-circle-outline" 
+                        title="操作说明">
+                    </v-list-item>
+                    <!-- 统计面版 -->
+                    <v-list-item 
+                        @click="showStatistics = true" 
+                        prepend-icon="mdi-chart-bar" 
+                        title="统计信息">
+                    </v-list-item>
+                </v-list>
+            </v-menu>
+
+            <!-- 修改：使用 v-dialog 实现悬浮窗 -->
+            <v-dialog v-model="showInstructions" location="bottom" max-width="900px" class="ma-4">
+                <v-card class="instructions-card" rounded="lg">
+                    <v-card-title class="text-h5 font-weight-bold pa-4">操作说明</v-card-title>
+                    <v-card-text class="pa-4">
+                        <!-- PC端说明 -->
+                        <div v-if="!isMobile">
+                            <v-list-subheader>轨道控制 (Orbit)</v-list-subheader>
+                            <v-list-item><v-row align="center"><v-col cols="5">旋转视角</v-col><v-col cols="7" class="text-grey-lighten-1">按住鼠标左键并拖动</v-col></v-row></v-list-item>
+                            <v-list-item><v-row align="center"><v-col cols="5">缩放</v-col><v-col cols="7" class="text-grey-lighten-1">滚动鼠标滚轮</v-col></v-row></v-list-item>
+                            <v-list-item><v-row align="center"><v-col cols="5">平移</v-col><v-col cols="7" class="text-grey-lighten-1">按住鼠标右键并拖动</v-col></v-row></v-list-item>
+                            <v-divider class="my-2"></v-divider>
+                            <v-list-subheader>第一人称 (PointerLock)</v-list-subheader>
+                            <v-list-item><v-row align="center"><v-col cols="5">转动视角</v-col><v-col cols="7" class="text-grey-lighten-1">移动鼠标</v-col></v-row></v-list-item>
+                            <v-list-item><v-row align="center"><v-col cols="5">移动</v-col><v-col cols="7" class="text-grey-lighten-1">W / A / S / D</v-col></v-row></v-list-item>
+                            <v-list-item><v-row align="center"><v-col cols="5">退出模式</v-col><v-col cols="7" class="text-grey-lighten-1">ESC</v-col></v-row></v-list-item>
+                            <v-divider class="my-2"></v-divider>
+                            <v-list-subheader>飞行模式 (Fly)</v-list-subheader>
+                            <v-list-item><v-row align="center"><v-col cols="5">调整方向</v-col><v-col cols="7" class="text-grey-lighten-1">按住鼠标左键并拖动</v-col></v-row></v-list-item>
+                            <v-list-item><v-row align="center"><v-col cols="5">前进/后退</v-col><v-col cols="7" class="text-grey-lighten-1">W / S</v-col></v-row></v-list-item>
+                            <v-list-item><v-row align="center"><v-col cols="5">左右平移</v-col><v-col cols="7" class="text-grey-lighten-1">A / D</v-col></v-row></v-list-item>
+                            <v-list-item><v-row align="center"><v-col cols="5">上下平移</v-col><v-col cols="7" class="text-grey-lighten-1">R / F</v-col></v-row></v-list-item>
+                        </div>
+                        
+                        <!-- 移动端说明 -->
+                        <div v-else>
+                            <v-list-subheader>轨道控制 (Orbit)</v-list-subheader>
+                            <v-list-item><v-row align="center"><v-col cols="5">旋转视角</v-col><v-col cols="7" class="text-grey-lighten-1">单指拖动</v-col></v-row></v-list-item>
+                            <v-list-item><v-row align="center"><v-col cols="5">缩放</v-col><v-col cols="7" class="text-grey-lighten-1">双指捏合/张开</v-col></v-row></v-list-item>
+                            <v-list-item><v-row align="center"><v-col cols="5">平移</v-col><v-col cols="7" class="text-grey-lighten-1">双指拖动</v-col></v-row></v-list-item>
+                        </div>
+                    </v-card-text>
+                     <v-card-actions class="pa-4">
+                        <v-spacer></v-spacer>
+                        <v-btn variant="tonal" @click="showInstructions = false">关闭</v-btn>
+                    </v-card-actions>
+                </v-card>
+            </v-dialog>
+            <!-- 统计信息面板 -->
+            <v-dialog v-model="showStatistics" location="bottom" max-width="900px" class="ma-4">
+                <v-card class="floating-card" rounded="lg">
+                    <v-card-title class="text-h5 font-weight-bold pa-4">统计信息</v-card-title>
+                    <v-card-text class="pa-4">
+                        <v-list bg-color="transparent">
+                            <v-list-item><v-row align="center"><v-col cols="6">帧率 (FPS)</v-col><v-col cols="6" class="text-grey-lighten-1">{{ Math.round(statistics.fps) }}</v-col></v-row></v-list-item>
+                            <v-list-item><v-row align="center"><v-col cols="6">帧时间 (Frame Time)</v-col><v-col cols="6" class="text-grey-lighten-1">{{ statistics.frameTime }} ms</v-col></v-row></v-list-item>
+                            <v-list-item><v-row align="center"><v-col cols="6">Splat 数量</v-col><v-col cols="6" class="text-grey-lighten-1">{{ statistics.splatNum }}</v-col></v-row></v-list-item>
+                            <v-list-item><v-row align="center"><v-col cols="6">上次排序耗时 (Sort Time)</v-col><v-col cols="6" class="text-grey-lighten-1">{{ statistics.lastSortTime }} ms</v-col></v-row></v-list-item>
+                            <v-list-item><v-row align="center"><v-col cols="6">分辨率</v-col><v-col cols="6" class="text-grey-lighten-1">{{ statistics.width }}, {{ statistics.height }}</v-col></v-row></v-list-item>
+                            <v-list-item><v-row align="center"><v-col cols="6">DPR</v-col><v-col cols="6" class="text-grey-lighten-1">{{ statistics.dpr }}</v-col></v-row></v-list-item>
+                        </v-list>
+                    </v-card-text>
+                    <v-card-actions class="pa-4">
+                        <v-spacer></v-spacer>
+                        <v-btn variant="tonal" @click="showStatistics = false">关闭</v-btn>
+                    </v-card-actions>
+                </v-card>
+            </v-dialog>
+        </v-app>
     </div>
-    <canvas id="drop-zone"></canvas>
+
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vuetify@3.6.10/dist/vuetify.min.js"></script>
+    <script type="importmap">
+        { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/" } }
+    </script>
     <script type="module">
-        console.log("Running~");
         import ImmerScapeViewer from "./src/GSViewer.js";
+        const { createApp } = Vue;
+        const { createVuetify } = Vuetify;
 
-		let viewer;
-        function handleSelection(event) {
-            const selectedOption = event.target.value;
-			viewer.fetchSceneWithURL(`/scenes/${selectedOption}.ply`);
-        }
+        const vuetify = createVuetify();
 
-        document.addEventListener('DOMContentLoaded', () => {
-            const selectElement = document.getElementById('mySelect');
-            selectElement.addEventListener('change', handleSelection);
+        const app = createApp({
+            data() {
+                return {
+                    isMobile: false,
+                    menu: false, 
+                    items: [
+                        { id: 'toggle_fps', title: '显示/隐藏FPS', icon: 'mdi-speedometer' },
+                        { id: 'import_file', title: '导入文件', icon: 'mdi-file-import' },
+                    ],
+                    qualityOptions: [
+                        { id: 'low', title: '低' },
+                        { id: 'medium', title: '中' },
+                        { id: 'high', title: '高' },
+                    ],
+                    sceneFiles: [
+                        'chair', 'fit409', 'train',
+                        'flame', 'kitchen', 'girl1_60', 'girl300_360', 
+                    ],
+                    viewer: null,
+                    showFPS: false,
+                    currentFPS: 0,
+                    quality: 'medium',
+                    controlMode: 'orbit',
+                    showInstructions: false,
+                    showStatistics: false,
+                    statistics: {
+                        fps: 0,
+                        frameTime: 0,
+                        splatNum: 0,
+                        lastSortTime: 0,
+                        width: 0,
+                        height: 0,
+                        dpr: 0,
+                    },
+                };
+            },
+            computed: {
+                
+            },
+            methods: {
+                handleItemClick(item) { 
+                    switch (item.id) {
+                        case 'toggle_fps':
+                            this.showFPS = !this.showFPS;
+                            break;
+                        case 'import_file':
+                            this.$refs.fileInput.click();
+                            break;
+                        case 'toggle_grid':
+                            break;
+                        default:
+                    }
+                    this.menu = false;
+                },
+                toggleControls(expectMode) {
+                    if (this.viewer.setControlMode(expectMode)) {
+                        this.controlMode = expectMode;
+                    }
+                },
+                setQuality(level) {
+                    this.quality = level; // 更新UI状态
+                    if (this.viewer) {
+                        this.viewer.setQuality(level); // 通知渲染器
+                    }
+                    this.menu = false; // 选择后关闭菜单
+                },
+                onFileSelected(event) {
+                    const file = event.target.files[0];
+                    if (!file) {
+                        return; // 用户可能取消了选择
+                    }
+                    this.viewer.fetchSceneWithNative(file);
+                },
+                loadScene(sceneName) {
+                    if (this.viewer) {
+                        const url = `/scenes/${sceneName}.spb`;
+                        this.viewer.fetchSceneWithURL(url);
+                    }
+                    this.menu = false; // 点击后关闭菜单
+                },
+                lockPointer() {
+                    if (this.viewer) {
+                        this.viewer.lockPointer();
+                    }
+                },
+            },
+            mounted() {
+                this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                const canvas = this.$refs.myCanvas;
+                this.viewer = new ImmerScapeViewer();
+                this.viewer.run();
+                this.viewer.fetchSceneWithURL("/scenes/chair.ply");
 
-            viewer = new ImmerScapeViewer();
-            viewer.run();
-            viewer.fetchSceneWithURL("/scenes/chair.ply");
+                setInterval(() => {
+                    if (this.viewer) {
+                        this.currentFPS = this.viewer.getFPS() || 0;
+                        this.statistics.fps = this.currentFPS || 0;
+                        this.statistics.frameTime = this.viewer.getFrameTime ? (this.viewer.getFrameTime() || 0).toFixed(2) : 'N/A';
+                        this.statistics.splatNum = this.viewer.getSplatNum ? this.viewer.getSplatNum() : 'N/A';
+                        this.statistics.lastSortTime = this.viewer.getLastSortTime ? (this.viewer.getLastSortTime() || 0).toFixed(2) : 'N/A';
+                        const resolution = this.viewer.getResolution();
+                        this.statistics.width = resolution.width;
+                        this.statistics.height = resolution.height;
+                        this.statistics.dpr = resolution.dpr;
+                    }
+                }, 1000);
+            }
         });
+
+        app.use(vuetify);
+        app.mount('#app');
     </script>
 </body>
 </html>

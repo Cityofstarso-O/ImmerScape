@@ -7,21 +7,21 @@ export class PlyLoader {
         const contentStart = new TextDecoder('utf-8').decode(new Uint8Array(arrayBuffer, 0, Math.min(1600, arrayBuffer.byteLength)));
         const headerEnd = contentStart.indexOf('end_header') + 'end_header'.length + 1;
         const [header] = contentStart.split('end_header');
-        const dataview = new DataView(arrayBuffer, headerEnd);
-        return { header, dataview };
+        return { header, headerEnd };
     }
 
-    static loadFromNative(arrayBuffer, isMobile) {
-        const { header, dataview } = PlyLoader.splitHeaderAndData(arrayBuffer);
+    static loadFromNative(file, quality) {
+        const { header, headerEnd } = PlyLoader.splitHeaderAndData(file.data);
+        file.headerEnd = headerEnd;
         const { offsets, pointCount } = PlyLoader.parseHeader(header);
         const gsType = PlyLoader.identifyGSType(offsets);
         let res;
         switch (gsType) {
             case GSType.ThreeD:
-                res = GSKernel_3DGS.parsePlyData2Buffers(pointCount, dataview, isMobile ? 'low' : 'medium');
+                res = GSKernel_3DGS.parsePlyData2Buffers(pointCount, file, quality);
                 break;
             case GSType.SPACETIME:
-                res = GSKernel_SPACETIME.parsePlyData2Buffers(pointCount, dataview, isMobile ? 'low' : 'low');
+                res = GSKernel_SPACETIME.parsePlyData2Buffers(pointCount, file, quality);
                 break;
             default:
                 res = {

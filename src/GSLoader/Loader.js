@@ -26,10 +26,13 @@ export class GSLoader {
             this.recvTime = performance.now();
             if (message.valid) {
                 const data = message.data;
+                const sceneName = Utils.extractFileName(this.currentFile);
+                data.name = sceneName;
+                data.uid = Utils.getRandomUID();
                 console.log(`[${(this.recvTime - this.sendTime)}ms] ${data}`);
                 this.eventBus.emit('buffersReady', {
                     data: data,
-                    sceneName: Utils.extractFileName(this.currentFile),
+                    sceneName: sceneName,
                 });
             } else {
                 console.log(`[${(this.recvTime - this.sendTime)}ms] GSLoader ERROR: ${message.error}`);
@@ -53,13 +56,12 @@ export class GSLoader {
                 'parser': ParserType.CPU,
                 'name': this.currentFile,
                 'data': content,
-                'isMobile': this.isMobile,
+                'quality': 'medium',
+                'from': 'drag',
             }, [content]);
         };
 
-        this.isMobile = Utils.isMobile();
-        console.log("Run on Mobile device: ", this.isMobile);
-        this.currentFile = '';
+        this.currentFile = '';  // not blank => is loading
         this.sendTime = 0;
         this.recvTime = 0;
     }
@@ -71,27 +73,22 @@ export class GSLoader {
      * @returns {Promise<string|object|Blob|ArrayBuffer|null>} - 返回一个包含文件内容的Promise，如果失败则返回null。
      */
     async readFileFromServer(filePath) {
-        try {
-            const response = await fetch(filePath);
+        this.currentFile = filePath;
+        this.sendTime = performance.now();
+        this.worker.postMessage({
+            'type': LoadType.URL,
+            'parser': ParserType.CPU,
+            'name': this.currentFile,
+            'data': null,
+            'quality': 'medium',
+            'from': 'url',
+        });
+    }
 
-            if (!response.ok) {
-                throw new Error(`无法找到文件: ${filePath} - 状态: ${response.status} ${response.statusText}`);
-            }
-            const content = await response.arrayBuffer();
-            console.log(`send file ${this.currentFile} to worker`);
-            this.currentFile = filePath;
-            this.sendTime = performance.now();
-            this.worker.postMessage({
-                'type': LoadType.NATIVE,
-                'parser': ParserType.CPU,
-                'name': this.currentFile,
-                'data': content,
-                'isMobile': this.isMobile,
-            }, [content]);
-            
-        } catch (error) {
-            console.error(`读取文件时发生错误: ${error.message}`);
-            return null;
-        }
+    async readFileFromNative(file) {
+        if (!this.currentFile) {
+            this.currentFile = file.name;
+			this.reader.readAsArrayBuffer(file);
+		}
     }
 }

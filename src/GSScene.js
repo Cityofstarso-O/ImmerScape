@@ -5,20 +5,25 @@ export class GSScene {
         this.eventBus = eventBus;
         this.eventBus.on('buffersReady', this.onBuffersReady.bind(this));
         this.scenes = {};
-        this.currentScene = '';
         this.graphicsAPI = graphicsAPI;
 
-        this.destroyBufOnSetupTex = options.destroyBufOnSetupTex;
+        // state
+        this.currentUID = '';
+        this.ready = false;
     }
 
     async onBuffersReady({ data, sceneName }) {
+        this.ready = false;
+        const oldScene = this.currentUID;
         // TODO: now we only support single scene
-        this.scenes[sceneName] = data;
-        this.setupTex(sceneName);
-        this.currentScene = sceneName;
-        //GSScene.debugUnpackBuffer(data.buffers, 0);
-        //GSScene.debugUnpackBuffer(data.buffers, 1);
-        //GSScene.debugUnpackBuffer(data.buffers, 2);
+        const uid = data.uid;
+        this.scenes[uid] = data;
+        this.setupTex(uid);
+
+        // set state: new scene is ready
+        this.currentUID = uid;
+        this.ready = true;
+        this.destoryOldScene(oldScene);
     }
 
     setupTex(sceneName) {
@@ -26,30 +31,42 @@ export class GSScene {
         Object.values(this.scenes[sceneName].buffers).forEach(value => {
             value.bind = value.bind || bindIndex;
             this.graphicsAPI.setupTexture(value);
-            if (this.destroyBufOnSetupTex) {
-                value.buffer = null;
-            }
+            value.buffer = null;
             ++bindIndex;
         });
         console.log(this.scenes[sceneName])
     }
 
+    async destoryOldScene(oldScene) {
+        if (oldScene) {
+            const scene = this.scenes[oldScene];
+            Object.values(scene.buffers).forEach(value => {
+                this.graphicsAPI.deleteTexture(value.texture);
+                value.buffer = null;
+                value.texture = null;
+            });
+            scene.file.data = null;
+
+            delete this.scenes[oldScene];
+        }
+    }
+
     forceSort() {
-        if (this.currentScene) {
-            return this.scenes[this.currentScene].gsType === 'SPACETIME';
+        if (this.currentUID) {
+            return this.scenes[this.currentUID].gsType === 'SPACETIME';
         }
         return false;
     }
 
     getSplatNum() {
-        if (this.currentScene && this.scenes[this.currentScene]) {
-            return this.scenes[this.currentScene].num;
+        if (this.currentUID && this.scenes[this.currentUID]) {
+            return this.scenes[this.currentUID].num;
         }
         return 0;
     }
 
     getBuffers() {
-        return this.scenes[this.currentScene].buffers;
+        return this.scenes[this.currentUID].buffers;
     }
 
     static debugUnpackBuffer(buffers, idx = 0) {

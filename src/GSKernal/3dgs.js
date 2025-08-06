@@ -48,7 +48,7 @@ export class GSKernel_3DGS {
                 array: 1,
             },
             sh: {  // deg 0
-                name: '',
+                name: 'SH0',
                 bytesPerTexel: 0,
                 texelPerSplat: 0,
                 format: "",
@@ -163,12 +163,13 @@ export class GSKernel_3DGS {
 
     static parsePlyData2Buffers = function() {
 
-        return function(pointCount, dataview, quality = 'medium') {
+        return function(pointCount, file, quality = 'medium') {
             // a little hack, pointCount shouldn't be too large (<= 8,388,608)
             if (pointCount > 4096 * 2048) {
                 console.warn(`pointCount ${pointCount} is too large and is clamped to 8,388,608`);
                 pointCount = 4096 * 2048;
             }
+            const dataview = new DataView(file.data, file.headerEnd);
 
             const buffers = GSKernel_3DGS.config[quality];
             const pospad = buffers.pospad;
@@ -254,50 +255,66 @@ export class GSKernel_3DGS {
                 valid: true,
                 data: {
                     buffers: buffers,
+                    file: file,
                     gsType: 'ThreeD',
                     num: pointCount,
                     sortBuffer: sortBuffer.buffer,
+                    quality: quality,
                 },
             }
         }
     }();
 
-    static parseSpbData2Buffers(descriptor, arrayBuffer) {
+    static parseSpbData2Buffers(descriptor, file) {
+        const arrayBuffer = file.data;
+        const quality = descriptor.quality;
         const pointCount = descriptor.num;
-        const buffers = {...GSKernel_3DGS.config[descriptor.quality]};
+        const buffers = {...GSKernel_3DGS.config[quality]};
         const pospad = buffers.pospad;
         const covcol = buffers.covcol;
         const sh = buffers.sh;
+
+        pospad.offset = descriptor.buffers.bind0.offset;
+        covcol.offset = descriptor.buffers.bind1.offset;
+        sh.offset = descriptor.buffers.bind2.offset;
 
         Object.assign(pospad, Utils.computeTexSize(pospad.texelPerSplat * pointCount));
         Object.assign(covcol, Utils.computeTexSize(covcol.texelPerSplat * pointCount));
         Object.assign(sh, Utils.computeTexSize(sh.texelPerSplat * pointCount));
 
         // TODO: deg 0 and deg1 and deg3
-        pospad.buffer = arrayBuffer.slice(descriptor.buffers.bind0.offset, 
-            descriptor.buffers.bind0.offset + pospad.width * pospad.height * pospad.bytesPerTexel);
         if (descriptor.pad) {
-            covcol.buffer = arrayBuffer.slice(descriptor.buffers.bind1.offset, 
-                descriptor.buffers.bind1.offset + covcol.width * covcol.height * covcol.bytesPerTexel);
-            sh.buffer = arrayBuffer.slice(descriptor.buffers.bind2.offset, 
-                descriptor.buffers.bind2.offset + sh.width * sh.height * sh.bytesPerTexel);
+            pospad.buffer = arrayBuffer.slice(pospad.offset, pospad.offset + pospad.width * pospad.height * pospad.bytesPerTexel);
+            covcol.buffer = arrayBuffer.slice(covcol.offset, covcol.offset + covcol.width * covcol.height * covcol.bytesPerTexel);
+            sh.buffer = arrayBuffer.slice(sh.offset, sh.offset + sh.width * sh.height * sh.bytesPerTexel);
         } else {
-            if (descriptor.quality == "low") {
-                covcol.buffer = new ArrayBuffer(covcol.width * covcol.height * covcol.bytesPerTexel);
-                new Uint8Array(covcol.buffer).set(new Uint8Array(arrayBuffer, descriptor.buffers.bind1.offset));
+            let sliceEnd = pospad.offset + pospad.width * pospad.height * pospad.bytesPerTexel;
+            if (sliceEnd <= arrayBuffer.byteLength) {
+                pospad.buffer = arrayBuffer.slice(pospad.offset, sliceEnd);
             } else {
-                covcol.buffer = arrayBuffer.slice(descriptor.buffers.bind1.offset, 
-                    descriptor.buffers.bind1.offset + covcol.width * covcol.height * covcol.bytesPerTexel);
-
+                pospad.buffer = new ArrayBuffer(pospad.width * pospad.height * pospad.bytesPerTexel);
+                new Uint8Array(pospad.buffer).set(new Uint8Array(arrayBuffer, pospad.offset));
+            }
+            sliceEnd = covcol.offset + covcol.width * covcol.height * covcol.bytesPerTexel;
+            if (sliceEnd <= arrayBuffer.byteLength) {
+                covcol.buffer = arrayBuffer.slice(covcol.offset, sliceEnd);
+            } else {
+                covcol.buffer = new ArrayBuffer(covcol.width * covcol.height * covcol.bytesPerTexel);
+                new Uint8Array(covcol.buffer).set(new Uint8Array(arrayBuffer, covcol.offset));
+            }
+            sliceEnd = sh.offset + sh.width * sh.height * sh.bytesPerTexel;
+            if (sliceEnd <= arrayBuffer.byteLength) {
+                sh.buffer = arrayBuffer.slice(sh.offset, sliceEnd);
+            } else {
                 sh.buffer = new ArrayBuffer(sh.width * sh.height * sh.bytesPerTexel);
-                new Uint8Array(sh.buffer).set(new Uint8Array(arrayBuffer, descriptor.buffers.bind2.offset));
+                new Uint8Array(sh.buffer).set(new Uint8Array(arrayBuffer, sh.offset));
             }
         }
         
         const sortBuffer = new Int32Array(pointCount * 4);
         const dataview = new DataView(pospad.buffer);
         let offset = 0, sortOffset = 0;
-        if (descriptor.quality == "high") {
+        if (quality == "high") {
             for (let i = 0;i < pointCount; ++i) {
                 sortBuffer[sortOffset + 0] = Math.round(dataview.getFloat32(offset + 0, true) * 1000.0);
                 sortBuffer[sortOffset + 1] = Math.round(dataview.getFloat32(offset + 4, true) * 1000.0);
@@ -325,9 +342,11 @@ export class GSKernel_3DGS {
             valid: true,
             data: {
                 buffers: buffers,
+                file: file,
                 gsType: 'ThreeD',
                 num: pointCount,
                 sortBuffer: sortBuffer.buffer,
+                quality: quality,
             },
         }
     }

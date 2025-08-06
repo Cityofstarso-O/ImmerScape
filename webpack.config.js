@@ -26,6 +26,15 @@ module.exports = {
       export: 'default',     // 指定将模块的 default 导出作为库的接口
     }
   },
+
+  //externals: {
+  //  three: {
+  //    commonjs: 'three',
+  //    commonjs2: 'three',
+  //    amd: 'three',
+  //    root: 'THREE', // 当通过 <script> 标签引入时，它会寻找全局变量 THREE
+  //  },
+  //},
   
   // 优化配置
   optimization: {

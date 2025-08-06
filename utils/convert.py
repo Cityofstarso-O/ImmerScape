@@ -30,7 +30,7 @@ def convert(inputPath: str, outputPath: str, level: int = 0):
     Kernel = None
     if Kernel_3dgs.identify(header):
         Kernel = Kernel_3dgs
-    if Kernel_spacetime.identify(header):
+    elif Kernel_spacetime.identify(header):
         Kernel = Kernel_spacetime
     else:
         print(f"Error: unknown gaussian type")
