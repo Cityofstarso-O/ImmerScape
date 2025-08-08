@@ -422,35 +422,35 @@ export class GSKernel_SPACETIME {
         if (quality == 'high') {
             for (let i = 0;i < pointCount; ++i) {
                 sortBuffer[sortOffset +  0] = pospadView.getFloat32(pospadOffset + 0, true);
-                sortBuffer[sortOffset +  1] = otherView.getFloat16(otherOffset + 0, true);
-                sortBuffer[sortOffset +  2] = otherView.getFloat16(otherOffset + 6, true);
-                sortBuffer[sortOffset +  3] = otherView.getFloat16(otherOffset + 12, true);
+                sortBuffer[sortOffset +  1] = Utils.readFp16(otherView, otherOffset + 0, true);
+                sortBuffer[sortOffset +  2] = Utils.readFp16(otherView, otherOffset + 6, true);
+                sortBuffer[sortOffset +  3] = Utils.readFp16(otherView, otherOffset + 12, true);
                 sortBuffer[sortOffset +  4] = pospadView.getFloat32(pospadOffset + 4, true);
-                sortBuffer[sortOffset +  5] = otherView.getFloat16(otherOffset + 2, true);
-                sortBuffer[sortOffset +  6] = otherView.getFloat16(otherOffset + 8, true);
-                sortBuffer[sortOffset +  7] = otherView.getFloat16(otherOffset + 14, true);
+                sortBuffer[sortOffset +  5] = Utils.readFp16(otherView, otherOffset + 2, true);
+                sortBuffer[sortOffset +  6] = Utils.readFp16(otherView, otherOffset + 8, true);
+                sortBuffer[sortOffset +  7] = Utils.readFp16(otherView, otherOffset + 14, true);
                 sortBuffer[sortOffset +  8] = pospadView.getFloat32(pospadOffset + 8, true);
-                sortBuffer[sortOffset +  9] = otherView.getFloat16(otherOffset + 4, true);
-                sortBuffer[sortOffset + 10] = otherView.getFloat16(otherOffset + 10, true);
-                sortBuffer[sortOffset + 11] = otherView.getFloat16(otherOffset + 16, true);
-                sortBuffer[sortOffset + 12] = otherView.getFloat16(otherOffset + 18, true);
+                sortBuffer[sortOffset +  9] = Utils.readFp16(otherView, otherOffset + 4, true);
+                sortBuffer[sortOffset + 10] = Utils.readFp16(otherView, otherOffset + 10, true);
+                sortBuffer[sortOffset + 11] = Utils.readFp16(otherView, otherOffset + 16, true);
+                sortBuffer[sortOffset + 12] = Utils.readFp16(otherView, otherOffset + 18, true);
                 pospadOffset += pospad.bytesPerTexel * pospad.texelPerSplat;
                 otherOffset += other.bytesPerTexel * other.texelPerSplat;
                 sortOffset += 13;
             }
         } else if (quality == 'medium') {
             for (let i = 0;i < pointCount; ++i) {
-                sortBuffer[sortOffset +  0] = pospadView.getFloat16(pospadOffset + 0, true);
-                sortBuffer[sortOffset +  1] = otherView.getFloat16(otherOffset + 0, true);
-                sortBuffer[sortOffset +  2] = otherView.getFloat16(otherOffset + 6, true);
+                sortBuffer[sortOffset +  0] = Utils.readFp16(pospadView, pospadOffset + 0, true);
+                sortBuffer[sortOffset +  1] = Utils.readFp16(otherView, otherOffset + 0, true);
+                sortBuffer[sortOffset +  2] = Utils.readFp16(otherView, otherOffset + 6, true);
                 sortBuffer[sortOffset +  3] = Utils.uint82float(otherView.getUint8(otherOffset + 12), self.motionRange[0], self.motionRange[1]);
-                sortBuffer[sortOffset +  4] = pospadView.getFloat16(pospadOffset + 2, true);
-                sortBuffer[sortOffset +  5] = otherView.getFloat16(otherOffset + 2, true);
-                sortBuffer[sortOffset +  6] = otherView.getFloat16(otherOffset + 8, true);
+                sortBuffer[sortOffset +  4] = Utils.readFp16(pospadView, pospadOffset + 2, true);
+                sortBuffer[sortOffset +  5] = Utils.readFp16(otherView, otherOffset + 2, true);
+                sortBuffer[sortOffset +  6] = Utils.readFp16(otherView, otherOffset + 8, true);
                 sortBuffer[sortOffset +  7] = Utils.uint82float(otherView.getUint8(otherOffset + 13), self.motionRange[0], self.motionRange[1]);
-                sortBuffer[sortOffset +  8] = pospadView.getFloat16(pospadOffset + 4, true);
-                sortBuffer[sortOffset +  9] = otherView.getFloat16(otherOffset + 4, true);
-                sortBuffer[sortOffset + 10] = otherView.getFloat16(otherOffset + 10, true);
+                sortBuffer[sortOffset +  8] = Utils.readFp16(pospadView, pospadOffset + 4, true);
+                sortBuffer[sortOffset +  9] = Utils.readFp16(otherView, otherOffset + 4, true);
+                sortBuffer[sortOffset + 10] = Utils.readFp16(otherView, otherOffset + 10, true);
                 sortBuffer[sortOffset + 11] = Utils.uint82float(otherView.getUint8(otherOffset + 14), self.motionRange[0], self.motionRange[1]);
                 sortBuffer[sortOffset + 12] = Utils.uint82float(otherView.getUint8(otherOffset + 15), self.tcRange[0], self.tcRange[1]);
                 pospadOffset += pospad.bytesPerTexel * pospad.texelPerSplat;
@@ -459,15 +459,15 @@ export class GSKernel_SPACETIME {
             }
         } else if (quality == 'low') {
             for (let i = 0;i < pointCount; ++i) {
-                sortBuffer[sortOffset +  0] = pospadView.getFloat16(pospadOffset + 0, true);
+                sortBuffer[sortOffset +  0] = Utils.readFp16(pospadView, pospadOffset + 0, true);
                 sortBuffer[sortOffset +  1] = Utils.uint82float(otherView.getUint8(otherOffset + 0), self.motionRange[0], self.motionRange[1]);
                 sortBuffer[sortOffset +  2] = Utils.uint82float(otherView.getUint8(otherOffset + 4), self.motionRange[0], self.motionRange[1]);
                 sortBuffer[sortOffset +  3] = Utils.uint82float(otherView.getUint8(otherOffset + 8), self.motionRange[0], self.motionRange[1]);
-                sortBuffer[sortOffset +  4] = pospadView.getFloat16(pospadOffset + 2, true);
+                sortBuffer[sortOffset +  4] = Utils.readFp16(pospadView, pospadOffset + 2, true);
                 sortBuffer[sortOffset +  5] = Utils.uint82float(otherView.getUint8(otherOffset + 1), self.motionRange[0], self.motionRange[1]);
                 sortBuffer[sortOffset +  6] = Utils.uint82float(otherView.getUint8(otherOffset + 5), self.motionRange[0], self.motionRange[1]);
                 sortBuffer[sortOffset +  7] = Utils.uint82float(otherView.getUint8(otherOffset + 9), self.motionRange[0], self.motionRange[1]);
-                sortBuffer[sortOffset +  8] = pospadView.getFloat16(pospadOffset + 4, true);
+                sortBuffer[sortOffset +  8] = Utils.readFp16(pospadView, pospadOffset + 4, true);
                 sortBuffer[sortOffset +  9] = Utils.uint82float(otherView.getUint8(otherOffset + 2), self.motionRange[0], self.motionRange[1]);
                 sortBuffer[sortOffset + 10] = Utils.uint82float(otherView.getUint8(otherOffset + 6), self.motionRange[0], self.motionRange[1]);
                 sortBuffer[sortOffset + 11] = Utils.uint82float(otherView.getUint8(otherOffset + 10), self.motionRange[0], self.motionRange[1]);

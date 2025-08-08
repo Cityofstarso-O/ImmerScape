@@ -104,9 +104,24 @@ function fromHalfFloat( val ) {
 	return _tables.floatView[ 0 ];
 }
 
+let getFloat16Available;
+if ('getFloat16' in DataView.prototype) {
+    getFloat16Available = true;
+} else {
+    getFloat16Available = false;
+}
+
 export class Utils {
     static f2fp162uint16 = toHalfFloat;
     static uint162fp162f = fromHalfFloat;
+
+    static readFp16(dataview, byteOffset, littleEndian) {
+        if (getFloat16Available) {
+            return dataview.getFloat16(byteOffset, littleEndian);
+        } else {
+            return uint162fp162f(dataview.getUint16(byteOffset, littleEndian));
+        }
+    }
 
     static getRandomUID() {
         return crypto.randomUUID();

@@ -325,9 +325,9 @@ export class GSKernel_3DGS {
             }
         } else {
             for (let i = 0;i < pointCount; ++i) {
-                sortBuffer[sortOffset + 0] = Math.round(dataview.getFloat16(offset + 0, true) * 1000.0);
-                sortBuffer[sortOffset + 1] = Math.round(dataview.getFloat16(offset + 2, true) * 1000.0);
-                sortBuffer[sortOffset + 2] = Math.round(dataview.getFloat16(offset + 4, true) * 1000.0);
+                sortBuffer[sortOffset + 0] = Math.round(Utils.readFp16(dataview, offset + 0, true) * 1000.0);
+                sortBuffer[sortOffset + 1] = Math.round(Utils.readFp16(dataview, offset + 2, true) * 1000.0);
+                sortBuffer[sortOffset + 2] = Math.round(Utils.readFp16(dataview, offset + 4, true) * 1000.0);
                 sortBuffer[sortOffset + 3] = 1000;
                 offset += 8;
                 sortOffset += 4;
