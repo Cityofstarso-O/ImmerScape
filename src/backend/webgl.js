@@ -4,8 +4,28 @@ export class WebGL {
     constructor(canvas) {
         this.graphicsAPI = canvas.getContext("webgl2", {
             antialias: false,
+            depth: true,
         });
         GlobalVars.graphicsAPI = GraphicsApiType.WEBGL;
+    }
+
+    getContext() {
+        return this.graphicsAPI;
+    }
+
+    disableCull() {
+        const gl = this.graphicsAPI;
+        gl.disable(gl.CULL_FACE);
+    }
+
+    disableDepth() {
+        const gl = this.graphicsAPI;
+        gl.disable(gl.DEPTH_TEST);
+    }
+
+    enableDepth() {
+        const gl = this.graphicsAPI;
+        gl.enable(gl.DEPTH_TEST);
     }
 
     updateViewport(offset = null, size = null) {
@@ -18,13 +38,28 @@ export class WebGL {
     updateClearColor(r = 0, g = 0, b = 0, a = 1) {
         const gl = this.graphicsAPI;
         gl.clearColor(r, g, b, a);
-        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     }
 
     updateBuffer(buffer, data) {
         const gl = this.graphicsAPI;
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
         gl.bufferSubData(gl.ARRAY_BUFFER, 0, data);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    }
+
+    initBuffer(buffer, size_or_data = 0, usage) {
+        const gl = this.graphicsAPI;
+        if (!buffer) {
+            return this.graphicsAPI.createBuffer();
+        }
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        if (typeof size_or_data === Number) {
+            this.graphicsAPI.bufferData(gl.ARRAY_BUFFER, size_or_data, gl[usage]);
+        } else {
+            this.graphicsAPI.bufferData(gl.ARRAY_BUFFER, size_or_data, gl[usage]);
+        }
         gl.bindBuffer(gl.ARRAY_BUFFER, null);
     }
 
@@ -74,6 +109,11 @@ export class WebGL {
         gl.disable(gl.RASTERIZER_DISCARD);
         gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
         gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+    }
+
+    draw(primitive, offset, num) {
+        const gl = this.graphicsAPI;
+        gl.drawArrays(gl[primitive], offset, num);
     }
 
     setBlendState() {
@@ -148,6 +188,46 @@ export class WebGL {
         }
     }();
 
+    loadTexture(url, flip = false) {
+        const gl = this.graphicsAPI;
+        const texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        // 因为图片加载是异步的，所以在加载完成前先放一个 1x1 的蓝色像素
+        const level = 0;
+        const internalFormat = gl.RGBA;
+        const width = 1;
+        const height = 1;
+        const border = 0;
+        const srcFormat = gl.RGBA;
+        const srcType = gl.UNSIGNED_BYTE;
+        const pixel = new Uint8Array([0, 0, 255, 255]); // 蓝色
+        gl.texImage2D(gl.TEXTURE_2D, level, internalFormat, width, height, border, srcFormat, srcType, pixel);
+        // 创建一个 Image 对象来加载图片
+        const image = new Image();
+        image.onload = function() {
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            // 将加载好的图片上传到 GPU 纹理
+            if (flip) {
+                gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+            }
+            gl.texImage2D(gl.TEXTURE_2D, level, internalFormat, srcFormat, srcType, image);
+            gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+            
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+
+        };
+        image.src = url; // 触发图片加载
+        return texture;
+    }
+
+    bindTexture(texture, bindID) {
+        const gl = this.graphicsAPI;
+        gl.activeTexture(gl.TEXTURE0 + bindID);
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+    }
+
     deleteTexture(tex) {
         const gl = this.graphicsAPI;
         if (tex) {
@@ -212,6 +292,58 @@ export class WebGL {
         gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
         vertexInput.instanceIndexBuffer = newInstanceIndexBuffer;
+    }
+
+    setupLineVAO(pos, color) {
+        const gl = this.graphicsAPI;
+        const vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+
+        const buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+
+        gl.enableVertexAttribArray(pos);
+        gl.vertexAttribPointer(pos, 3, gl.FLOAT, false, 7 * 4, 0);
+
+        gl.enableVertexAttribArray(color);
+        gl.vertexAttribPointer(color, 4, gl.FLOAT, false, 7 * 4, 3 * 4);
+
+        gl.bindVertexArray(null);
+        return {
+            vao: vao,
+            buffer: buffer
+        }
+    }
+
+    setupCircleVAO(posLoc, uvLoc) {
+        const gl = this.graphicsAPI;
+        const vertexPositions = new Float32Array([
+            -1.0, -1.0, 0.0, 0.0,
+             1.0, -1.0, 0.33333333, 0.0, 
+             1.0,  1.0, 0.33333333, 0.5, 
+             -1.0, 1.0, 0.0, 0.5,
+        ]);
+
+        const vbo = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+        gl.bufferData(gl.ARRAY_BUFFER, vertexPositions, gl.STATIC_DRAW);
+
+        const vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 4 * 4, 0);
+        gl.enableVertexAttribArray(uvLoc);
+        gl.vertexAttribPointer(uvLoc, 2, gl.FLOAT, false, 4 * 4, 2 * 4);
+
+        gl.bindVertexArray(null);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+        return {
+            'vao': vao,
+            'vertexBuffer': vbo
+        };
     }
 
     deleteVAO(vao) {

@@ -123,6 +123,27 @@ export class Utils {
         }
     }
 
+    static valueChanged(oldValue, newValue) {
+        if (typeof oldValue !== typeof newValue) {
+            return true;
+        }
+
+        if (Array.isArray(newValue)) {
+            if (!Array.isArray(oldValue) || oldValue.length !== newValue.length) {
+                return true;
+            }
+
+            for (let i = 0; i < newValue.length; i++) {
+                if (oldValue[i] !== newValue[i]) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        return oldValue !== newValue;
+    }
+
     static getRandomUID() {
         return crypto.randomUUID();
     }
