@@ -266,10 +266,16 @@
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vuetify@3.6.10/dist/vuetify.min.js"></script>
     <script type="importmap">
-        { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/" } }
+        {
+            "imports": {
+                "three": "/node_modules/three/build/three.module.js",
+                "@tweenjs/tween.js": "/node_modules/@tweenjs/tween.js/dist/tween.esm.js"
+            }
+        }
     </script>
     <script type="module">
         import ImmerScapeViewer from "./src/GSViewer.js";
+        let viewer;
         const { createApp } = Vue;
         const { createVuetify } = Vuetify;
 
@@ -293,7 +299,6 @@
                         'chair', 'fit409', 'train',
                         'flame', 'kitchen', 'girl1_60', 'girl300_360', 
                     ],
-                    viewer: null,
                     showFPS: false,
                     currentFPS: 0,
                     quality: 'medium',
@@ -330,14 +335,14 @@
                     this.menu = false;
                 },
                 toggleControls(expectMode) {
-                    if (this.viewer.setControlMode(expectMode)) {
+                    if (viewer.setControlMode(expectMode)) {
                         this.controlMode = expectMode;
                     }
                 },
                 setQuality(level) {
                     this.quality = level; // 更新UI状态
-                    if (this.viewer) {
-                        this.viewer.setQuality(level); // 通知渲染器
+                    if (viewer) {
+                        viewer.setQuality(level); // 通知渲染器
                     }
                     this.menu = false; // 选择后关闭菜单
                 },
@@ -346,36 +351,36 @@
                     if (!file) {
                         return; // 用户可能取消了选择
                     }
-                    this.viewer.fetchSceneWithNative(file);
+                    viewer.fetchSceneWithNative(file);
                 },
                 loadScene(sceneName) {
-                    if (this.viewer) {
+                    if (viewer) {
                         const url = `/scenes/${sceneName}.spb`;
-                        this.viewer.fetchSceneWithURL(url);
+                        viewer.fetchSceneWithURL(url);
                     }
                     this.menu = false; // 点击后关闭菜单
                 },
                 lockPointer() {
-                    if (this.viewer) {
-                        this.viewer.lockPointer();
+                    if (viewer) {
+                        viewer.lockPointer();
                     }
                 },
             },
             mounted() {
                 this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
                 const canvas = this.$refs.myCanvas;
-                this.viewer = new ImmerScapeViewer();
-                this.viewer.run();
-                this.viewer.fetchSceneWithURL("/scenes/chair.ply");
+                viewer = new ImmerScapeViewer();
+                viewer.run();
+                viewer.fetchSceneWithURL("/scenes/chair.ply");
 
                 setInterval(() => {
-                    if (this.viewer) {
-                        this.currentFPS = this.viewer.getFPS() || 0;
+                    if (viewer) {
+                        this.currentFPS = viewer.getFPS() || 0;
                         this.statistics.fps = this.currentFPS || 0;
-                        this.statistics.frameTime = this.viewer.getFrameTime ? (this.viewer.getFrameTime() || 0).toFixed(2) : 'N/A';
-                        this.statistics.splatNum = this.viewer.getSplatNum ? this.viewer.getSplatNum() : 'N/A';
-                        this.statistics.lastSortTime = this.viewer.getLastSortTime ? (this.viewer.getLastSortTime() || 0).toFixed(2) : 'N/A';
-                        const resolution = this.viewer.getResolution();
+                        this.statistics.frameTime = viewer.getFrameTime ? (viewer.getFrameTime() || 0).toFixed(2) : 'N/A';
+                        this.statistics.splatNum = viewer.getSplatNum ? viewer.getSplatNum() : 'N/A';
+                        this.statistics.lastSortTime = viewer.getLastSortTime ? (viewer.getLastSortTime() || 0).toFixed(2) : 'N/A';
+                        const resolution = viewer.getResolution();
                         this.statistics.width = resolution.width;
                         this.statistics.height = resolution.height;
                         this.statistics.dpr = resolution.dpr;

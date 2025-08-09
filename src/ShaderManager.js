@@ -1,6 +1,7 @@
 import { GSType } from "./Global.js";
 import { GSKernel_3DGS } from "./GSKernal/3dgs.js";
 import { GSKernel_SPACETIME } from "./GSKernal/spacetime.js";
+import { Utils } from "./Utils.js";
 
 export class ShaderManager {
     static shaderHelperFunc = `
@@ -136,10 +137,12 @@ export class ShaderManager {
         this.ready = false;
     }
 
-    updateUniform(name, value) {
+    updateUniform(name, value, check = false) {
         if (this.vars[name]) {
-            this.vars[name].value = value;
-            this.vars[name].update = true;
+            if (!check || Utils.valueChanged(this.vars[name].value, value)) {
+                this.vars[name].value = value;
+                this.vars[name].update = true;
+            }
         } else {
             console.warn('ShaderManager: No such vars: ', name);
         }
@@ -155,6 +158,7 @@ export class ShaderManager {
         for (const [key, value] of Object.entries(this.vars)) {
             if (force || value.update) {
                 this.graphicsAPI.updateUniform(this.uniforms[this.key][key], value.type, value.value, value.transpose);
+                value.update = false;
             }
         }
     }
@@ -364,7 +368,7 @@ export class ShaderManager {
         this.saveLocations(key);
     }
 
-    setPipelineAndBind(key = null) {
+    setPipeline(key = null) {
         key = key || this.key;
         const program = this.programs[key];
         if (!program) {
@@ -373,6 +377,8 @@ export class ShaderManager {
         }
         this.graphicsAPI.updateProgram(program);
         this.graphicsAPI.updateVertexInput(this.vaos[key].vao);
+        this.graphicsAPI.disableCull();
+        this.graphicsAPI.disableDepth();
     }
 
     getUniformLoc(key, name) {

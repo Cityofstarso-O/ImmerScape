@@ -7,6 +7,7 @@ import { GSSorter } from "./sorter/GSSorter.js";
 import { Utils } from "./Utils.js";
 import { OrbitControls } from './controls/OrbitControls.js';
 import { PointerLockControls } from './controls/PointerLockCotrols.js';
+import { SceneHelper } from './SceneHelper/sceneHelper.js';
 import * as THREE from "three"
 
 
@@ -34,8 +35,8 @@ export default class GSViewer {
         this.__resolveOptions();
 
         this.devicePixelRatio = window.devicePixelRatio;
-        this.canvas.width = this.canvas.clientWidth * this.devicePixelRatio;
-        this.canvas.height = this.canvas.clientHeight * this.devicePixelRatio;
+        this.canvas.width  = Math.round(this.canvas.clientWidth  * this.devicePixelRatio);
+        this.canvas.height = Math.round(this.canvas.clientHeight * this.devicePixelRatio);
         this.perspectiveCamera = null;
         this.camera = null;
         this.initialCameraPosition = this.options.initialCameraPosition;
@@ -76,10 +77,13 @@ export default class GSViewer {
         this.gsScene = new GSScene(this.options, this.eventBus, this.graphicsAPI);
         this.shaderManager = new ShaderManager(this.options, this.eventBus, this.graphicsAPI);
         this.sorter = new GSSorter(this.options, this.eventBus);
+        this.sceneHelper = new SceneHelper(this.canvas, this.graphicsAPI);
 
         this.eventBus.on('buffersReady', this.__onBuffersReady.bind(this));
         this.__setupCamera();
         this.__setupControls();
+
+        this.sceneHelper.initGizmo(this.camera, this.controls)
     }
 
     setControlMode(mode) {
@@ -90,6 +94,8 @@ export default class GSViewer {
 
             this.orbitControls.enabled = true;
             this.controls = this.orbitControls;
+            this.camera.controls = this.controls;
+            this.controls.type = 'orbit';
             return true;
         } else if (mode === 'pointerLock') {
             if (this.options.enablePointerLock) {
@@ -99,6 +105,8 @@ export default class GSViewer {
                 this.pointerLockControls.useAsFlyControls = this.useAsFlyControls;
                 this.controls = this.pointerLockControls;
                 this.pointerLockControls.enabled = true;
+                this.camera.controls = this.controls;
+                this.controls.type = 'pointerLock';
                 return true;
             } else {
                 return false;
@@ -111,6 +119,8 @@ export default class GSViewer {
                 this.pointerLockControls.useAsFlyControls = this.useAsFlyControls;
                 this.controls = this.pointerLockControls;
                 this.pointerLockControls.enabled = true;
+                this.camera.controls = this.controls;
+                this.controls.type = 'fly';
                 return true;
             } else {
                 return false;
@@ -176,19 +186,22 @@ export default class GSViewer {
             this.__updateControls();
             this.__runSplatSort(this.gsScene.forceSort());
             this.__updateForRendererSizeChanges();
+            this.sceneHelper.update(currentTime, this.deltaT);
 
             if (this.__shouldRender()) {
-                // TODO: bind instance index buffer
-                this.__updateUniforms();
+                // pass 0: gaussian splatting
                 this.graphicsAPI.updateViewport();
+                this.graphicsAPI.updateClearColor();
+                this.shaderManager.setPipeline();
+                this.__updateUniforms();
 
                 if (this.options.debug) {
                     this.graphicsAPI.drawInstanced('TRIANGLE_FAN', 0, 4, this.gsScene.getSplatNum(), this.shaderManager.debugTF);
                     this.shaderManager.debugLog();
                 }
-
-                this.graphicsAPI.updateClearColor();
                 this.graphicsAPI.drawInstanced('TRIANGLE_FAN', 0, 4, this.gsScene.getSplatNum());
+                // pass 1: ui
+                this.sceneHelper.render()
             }
         }
 
@@ -204,9 +217,11 @@ export default class GSViewer {
             }
             const res = Boolean(this.gsScene.ready && this.sorter.ready && this.shaderManager.ready);
             if (!isSet && res) {
+                // these states only need to set once
                 this.graphicsAPI.setBlendState();
-                this.shaderManager.setPipelineAndBind();
+                this.shaderManager.setPipeline();
                 this.shaderManager.updateUniformTextures(this.gsScene.getBuffers());
+                this.shaderManager.updateUniforms(true);
                 isSet = true;
             }
 
@@ -234,6 +249,7 @@ export default class GSViewer {
                 this.camera.aspect = currentRendererSize.x / currentRendererSize.y;
                 this.camera.updateProjectionMatrix();
                 lastRendererSize.copy(currentRendererSize);
+                this.sceneHelper._onAspectChanged();
             }
         };
     }();
@@ -245,11 +261,11 @@ export default class GSViewer {
         const projMat = this.camera.projectionMatrix.elements;
         this.shaderManager.updateUniform('viewMatrix', this.camera.matrixWorldInverse.elements);
         this.shaderManager.updateUniform('projectionMatrix', projMat);
-        this.shaderManager.updateUniform('cameraPosition', this.camera.position.toArray());
+        this.shaderManager.updateUniform('cameraPosition', this.camera.position.toArray(), true);
         const focalX = projMat[0] * 0.5 * this.canvas.width;
         const focalY = projMat[5] * 0.5 * this.canvas.height;
-        this.shaderManager.updateUniform('focal', [focalX, focalY]);
-        this.shaderManager.updateUniform('invViewport', [1 / this.canvas.width, 1 / this.canvas.height]);
+        this.shaderManager.updateUniform('focal', [focalX, focalY], true);
+        this.shaderManager.updateUniform('invViewport', [1 / this.canvas.width, 1 / this.canvas.height], true);
         this.shaderManager.updateUniform('timestamp', this.loopedTime);
 
         this.shaderManager.updateUniforms();
@@ -436,15 +452,23 @@ export default class GSViewer {
             if (this.pointerLockControls) {
                 this.pointerLockControls.isLeftMouseDown = this.isLeftMouseDown;
             }
+            this.sceneHelper._onMouseUp();
         }
+    }
+
+    __onMouseMove(event) {
+        if (this.pointerLockControls) {
+            this.pointerLockControls._onMouseMove(event);
+        }
+        this.sceneHelper._onMouseMove(event);
     }
 
     __setupControls() {
         this.orbitControls = new OrbitControls(this.camera, this.canvas);
         this.orbitControls.listenToKeyEvents(window);
         this.orbitControls.rotateSpeed = 0.5;
-        this.orbitControls.maxPolarAngle = Math.PI * .75;
-        this.orbitControls.minPolarAngle = 0.1;
+        //this.orbitControls.maxPolarAngle = Math.PI * .75;
+        //this.orbitControls.minPolarAngle = 0.1;
         this.orbitControls.enableDamping = true;
         this.orbitControls.dampingFactor = 0.05;
         this.orbitControls.target.copy(this.initialCameraLookAt);
@@ -466,9 +490,13 @@ export default class GSViewer {
         document.addEventListener('keyup', this.__onKeyUp.bind(this));
         document.addEventListener('mousedown', this.__onMouseDown.bind(this));
         document.addEventListener('mouseup', this.__onMouseUp.bind(this));
+        document.addEventListener('mousemove', this.__onMouseMove.bind(this));
         
         this.controls = this.orbitControls;
+        this.controls.type = 'orbit';
         this.controls.update();
+        this.camera.controls = this.controls;
+
     }
 
     __updatePointerLockMovement() {
