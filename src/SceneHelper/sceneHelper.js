@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { Gizmo } from "./gizmo.js";
+import { Grid } from "./grid.js";
 import { Group } from "@tweenjs/tween.js";
 
 export class SceneHelper {
@@ -10,23 +11,31 @@ export class SceneHelper {
         this.gizmo = null;
         this.offsetY = 0.8;
         this.offsetX = 1 - this.canvas.clientHeight * (1 - this.offsetY) / this.canvas.clientWidth;
+
+        this.grid = null;
     }
 
     update(currentTime, deltaT) {
         this.gizmo.update(currentTime);
     }
 
-    initGizmo(camera) {
+    init(camera) {
         this.gizmo = new Gizmo(camera, this.graphicsAPI);
+        this.grid = new Grid(camera, this.graphicsAPI);
     }
 
-    render() {
+    renderGizmo() {
         this.graphicsAPI.enableDepth();
         this.graphicsAPI.updateViewport(
             {x: this.canvas.width * this.offsetX, y: this.canvas.height * this.offsetY}, 
             {x: this.canvas.width * (1 - this.offsetX), y: this.canvas.height * (1 - this.offsetY)}
         );
         this.gizmo.render();
+    }
+
+    renderGrid() {
+        this.graphicsAPI.disableDepth();
+        this.grid.render();
     }
 
     _onMouseMove(event) {

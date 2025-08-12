@@ -1,4 +1,5 @@
 import { Utils } from "./Utils.js";
+import * as THREE from "three"
 
 export class GSScene {
     constructor(options, eventBus, graphicsAPI) {
@@ -12,10 +13,12 @@ export class GSScene {
         this.ready = false;
     }
 
+    getCurrentScene(property) {
+        return this.scenes[this.currentUID][property];
+    }
+
     async onBuffersReady({ data, sceneName }) {
         this.ready = false;
-        const oldScene = this.currentUID;
-        // TODO: now we only support single scene
         const uid = data.uid;
         this.scenes[uid] = data;
         this.setupTex(uid);
@@ -23,7 +26,6 @@ export class GSScene {
         // set state: new scene is ready
         this.currentUID = uid;
         this.ready = true;
-        this.destoryOldScene(oldScene);
     }
 
     setupTex(sceneName) {
@@ -49,10 +51,59 @@ export class GSScene {
 
             delete this.scenes[oldScene];
         }
+        console.log('dstory', this.scenes)
+    }
+
+    removeScene(uid) {
+        if (uid === this.currentUID) {
+            this.ready = false;
+        }
+        this.destoryOldScene(uid);
+    }
+
+    switchToScene(uid) {
+        this.eventBus.emit('buffersReady', {
+            data: this.scenes[uid],
+            sceneName: this.scenes[uid].name,
+        })
+    }
+
+    updateTransform = function() {
+        const tmpMat = new THREE.Matrix4();
+        const euler = new THREE.Euler(0, 0, 0, 'ZXY');
+        const deg2rad = Math.PI / 180;
+        return function() {
+            const transform = this.scenes[this.currentUID].transform;
+            euler.set(transform.rotation.x * deg2rad, transform.rotation.y * deg2rad, transform.rotation.z * deg2rad);
+            tmpMat.makeRotationFromEuler(euler);
+            tmpMat.setPosition(transform.position.x, transform.position.y, transform.position.z);
+
+            const modelMatrix = this.scenes[this.currentUID].modelMatrix;
+            modelMatrix.copy(this.scenes[this.currentUID].appliedTransform);
+            modelMatrix.premultiply(tmpMat);
+
+            this.scenes[this.currentUID].sceneScale = this.scenes[this.currentUID].appliedScale * transform.scale.x;
+        }
+    }();
+
+    applyTransform() {
+        this.scenes[this.currentUID].appliedTransform.copy(this.scenes[this.currentUID].modelMatrix);
+        this.scenes[this.currentUID].appliedScale = this.scenes[this.currentUID].sceneScale;
+
+        const transform = this.scenes[this.currentUID].transform;
+        transform.position.x = 0;
+        transform.position.y = 0;
+        transform.position.z = 0;
+        transform.rotation.x = 0;
+        transform.rotation.y = 0;
+        transform.rotation.z = 0;
+        transform.scale.x = 1;
+        transform.scale.y = 1;
+        transform.scale.z = 1;
     }
 
     forceSort() {
-        if (this.currentUID) {
+        if (this.ready && this.currentUID) {
             return this.scenes[this.currentUID].gsType === 'SPACETIME';
         }
         return false;
