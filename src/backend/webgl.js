@@ -161,9 +161,13 @@ export class WebGL {
 
         return function(desc) {
             const gl = this.graphicsAPI;
-            const texture = gl.createTexture();
+            const exist = Boolean(desc.texture);
+            const texture = desc.texture || gl.createTexture();
             gl.activeTexture(gl.TEXTURE0 + desc.bind);
             gl.bindTexture(gl.TEXTURE_2D, texture);
+            if (exist) {
+                return;
+            }
 
             const {format, type} = getFormatType(desc.format);
             const TypedArray = getTypedArrayConstructor(type);

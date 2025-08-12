@@ -1,35 +1,52 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>全屏 WebGL2 三角形与 Vuetify UI</title>
-
-    <!-- 1. 引入必要的库 (CSS) -->
-    <link href="https://cdn.jsdelivr.net/npm/vuetify@3.6.10/dist/vuetify.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css" rel="stylesheet">
+    <title>Vue & Vuetify Canvas App</title>
+    
+    <!-- Vuetify CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/vuetify@3.x/dist/vuetify.min.css" rel="stylesheet">
+    <!-- Material Design Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@7.x/css/materialdesignicons.min.css" rel="stylesheet">
     
     <style>
-        /* 保证全屏的关键 CSS */
-        html, body {
+        /* 确保html, body, 和 v-app 占满整个视口高度 */
+        html, body, #app, .v-application {
+            height: 100%;
             margin: 0;
             padding: 0;
-            overflow: hidden;
+            overflow: hidden; /* 防止出现滚动条 */
         }
-        #app {
-            height: 100vh;
-            width: 100vw;
+        /* 主布局容器 */
+        .main-layout {
+            display: flex;
+            height: 100%; /* 因为没有 app-bar，所以高度是 100% */
+        }
+        /* Canvas 的容器 */
+        .canvas-container {
+            position: relative; /* 使得内部的绝对定位元素相对于它定位 */
+            height: 100%;
+            padding: 0 !important;
+            /* 添加过渡效果，使 Canvas 缩放更平滑 */
+            transition: width 0.2s ease-in-out;
         }
         #drop-zone {
-            position: absolute;
-            top: 0;
-            left: 0;
             width: 100%;
             height: 100%;
+            display: block;
+            background-color: #f0f0f0;
             z-index: 0;
         }
+        /* 右侧面板 */
+        .scene-panel {
+            flex-shrink: 0; /* 防止面板被压缩 */
+            border-left: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+        }
         .fps-counter {
-            position: fixed; /* 使用 fixed 确保相对于浏览器窗口定位 */
+            position: absolute;
             top: 16px;
             right: 16px;
             color: white;
@@ -76,321 +93,556 @@
             -webkit-backdrop-filter: blur(10px);
             color: #F5F5F5;
         }
-
         /* 为子标题设置更亮的颜色以提高对比度 */
         .v-list-subheader {
             color: rgba(245, 245, 245, 0.85);
+        }
+        /* 为对话框卡片添加样式 */
+        .dialog-card {
+            background-color: rgba(30, 30, 30, 0.85) !important;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            color: #F5F5F5;
+        }
+        /* 移除统计列表的内边距，让栅格系统来控制 */
+        .stat-list .v-list-item {
+            padding-inline-start: 0;
+            padding-inline-end: 0;
+        }
+        /* 【新增】统计信息面板的容器样式 */
+        .statistics-panel {
+            position: absolute;
+            bottom: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: calc(100% - 32px); /* 宽度为100%减去两边边距 */
+            max-width: 900px;
+            z-index: 10;
+            pointer-events: none; /* 允许点击穿透容器 */
+        }
+        .statistics-panel > .v-card {
+            pointer-events: auto; /* 但卡片本身可以响应点击 */
+        }
+        /* 为场景列表添加固定高度和边框 */
+        .scrollable-list-container {
+            padding: 8px;
+        }
+        .scrollable-list {
+            height: 250px; /* 固定高度 */
+            overflow-y: auto;
+            flex-shrink: 1;
+            border: 1px solid rgba(128, 128, 128, 0.3); /* 添加边框 */
+            border-radius: 4px;
+        }
+        /* 变换面板样式 */
+        .transform-panel {
+            border-top: 1px solid rgba(128, 128, 128, 0.3);
+            flex-shrink: 0;
+        }
+        .transform-row-label {
+            font-size: 0.8rem;
+            color: #888;
+            white-space: nowrap;
+            padding-right: 8px;
+        }
+        .draggable-label {
+            cursor: ew-resize;
+            user-select: none;
+            padding: 0 8px;
+            color: #888;
+        }
+        /* 【新增】分隔条样式 */
+        .splitter {
+            width: 5px;
+            background-color: #e0e0e0;
+            cursor: col-resize;
+            flex-shrink: 0;
+        }
+        .splitter:hover {
+            background-color: #bdbdbd;
         }
     </style>
 </head>
 <body>
 
-    <div id="app">
-        <v-app>
-            <!-- Canvas 作为背景层 -->
-            <canvas id="drop-zone" ref="myCanvas"></canvas>
-            <!-- pointerLock Controls 的遮罩层, 使用 v-show 替代 v-if -->
-            <div id="blocker" ref="blocker" v-show="controlMode === 'pointerLock'">
-                <!-- 使用 @click 替代 addEventListener -->
-                <div id="instructions" @click="lockPointer">
-                    <p style="font-size: 36px">点击以开始</p>
-                    <p>
-                        W, A, S, D = 移动<br/>
-                        鼠标 = 环顾四周<br/>
-                        ESC = 解锁鼠标
-                    </p>
-                </div>
-            </div>
-            <!-- FPS 计数器，由 v-if 控制显示 -->
-            <div v-if="showFPS" class="fps-counter">
-                FPS: {{ Math.round(currentFPS) }}
-            </div>
-            <!-- 隐藏的文件输入框 -->
-            <input type="file" ref="fileInput" @change="onFileSelected" style="display: none;" />
-            <!-- 左上角菜单 -->
-            <v-menu v-model="menu" location="bottom">
-                <template v-slot:activator="{ props }">
-                    <v-btn
-                        v-bind="props"
-                        icon="mdi-dots-vertical"
-                        location="top start"
-                        position="fixed"
-                        size="large"
-                        class="ma-4"
-                        elevation="8"
-                        style="z-index: 1;"
-                    ></v-btn>
-                </template>
-    
-                <v-list>
-                    <!-- 控制器切换子菜单，仅在 PC 端显示 -->
-                    <v-list-item
-                        v-for="(item, index) in items"
-                        :key="index"
-                        @click="handleItemClick(item)"
-                    >
-                        <template v-slot:prepend>
-                          <v-icon :icon="item.icon"></v-icon>
-                        </template>
-                        <v-list-item-title>{{ item.title }}</v-list-item-title>
+<div id="app">
+    <v-app>
+        <!-- 左上角浮动菜单按钮 -->
+        <v-menu v-model="menu" location="bottom">
+            <template v-slot:activator="{ props }">
+                <v-btn
+                    v-bind="props"
+                    icon="mdi-dots-vertical"
+                    location="top start"
+                    position="fixed"
+                    size="large"
+                    class="ma-4"
+                    elevation="8"
+                    style="z-index: 10;"
+                ></v-btn>
+            </template>
+            <v-list>
+                <v-list-item @click="toggleSceneManager" title="Scenes"></v-list-item>
+                <v-list-item @click="toggleFPS" prepend-icon="mdi-speedometer" title="FPS"></v-list-item>
+                <v-list-item @click="toggleImport" prepend-icon="mdi-file-import" title="Import"></v-list-item>
+                <v-list-group value="Controls" v-if="!isMobile">
+                    <template v-slot:activator="{ props }">
+                        <v-list-item v-bind="props" @click.stop prepend-icon="mdi-gamepad-variant" title="Controls"></v-list-item>
+                    </template>
+                    <v-list-item @click="toggleControls('orbit')" title="轨道控制">
+                        <template v-slot:append><v-icon v-if="controlMode === 'orbit'">mdi-check</v-icon></template>
                     </v-list-item>
-                    <!-- 控制器切换子菜单，仅在 PC 端显示 -->
-                    <v-list-group value="Controls" v-if="!isMobile">
-                        <template v-slot:activator="{ props }">
-                            <v-list-item v-bind="props" prepend-icon="mdi-gamepad-variant" title="控制模式"></v-list-item>
-                        </template>
-                        <v-list-item @click="toggleControls('orbit')" title="轨道控制">
-                            <template v-slot:append><v-icon v-if="controlMode === 'orbit'">mdi-check</v-icon></template>
-                        </v-list-item>
-                        <v-list-item @click="toggleControls('pointerLock')" title="第一人称">
-                            <template v-slot:append><v-icon v-if="controlMode === 'pointerLock'">mdi-check</v-icon></template>
-                        </v-list-item>
-                        <v-list-item @click="toggleControls('fly')" title="飞行模式">
-                            <template v-slot:append><v-icon v-if="controlMode === 'fly'">mdi-check</v-icon></template>
-                        </v-list-item>
-                    </v-list-group>
-                    <!-- 选择场景的子菜单 -->
-                    <v-list-group value="Scenes">
-                        <template v-slot:activator="{ props }">
-                            <v-list-item
-                                v-bind="props"
-                                prepend-icon="mdi-folder-multiple-image"
-                                title="选择场景"
-                            ></v-list-item>
-                        </template>
+                    <v-list-item @click="toggleControls('pointerLock')" title="第一人称">
+                        <template v-slot:append><v-icon v-if="controlMode === 'pointerLock'">mdi-check</v-icon></template>
+                    </v-list-item>
+                    <v-list-item @click="toggleControls('fly')" title="飞行模式">
+                        <template v-slot:append><v-icon v-if="controlMode === 'fly'">mdi-check</v-icon></template>
+                    </v-list-item>
+                </v-list-group>
+                <v-list-item @click="showInstructions = true" prepend-icon="mdi-help-circle-outline" title="Help"></v-list-item>
+                <v-list-item @click="showStatistics = true" prepend-icon="mdi-chart-bar" title="Statistics"></v-list-item>
+                <v-list-group value="Scenes">
+                    <template v-slot:activator="{ props }">
                         <v-list-item
-                            v-for="sceneName in sceneFiles"
-                            :key="sceneName"
-                            :title="sceneName"
-                            @click="loadScene(sceneName)"
+                            v-bind="props" @click.stop
+                            prepend-icon="mdi-folder-multiple-image"
+                            title="选择场景"
                         ></v-list-item>
-                    </v-list-group>
-                    <!-- 选择质量的子菜单 -->
-                    <v-list-group value="Quality">
-                        <template v-slot:activator="{ props }">
-                            <v-list-item
-                                v-bind="props"
-                                prepend-icon="mdi-tune-variant"
-                                title="渲染质量"
-                            ></v-list-item>
-                        </template>
+                    </template>
+                    <v-list-item
+                        v-for="sceneName in cloudSceneFiles"
+                        :key="sceneName"
+                        :title="sceneName"
+                        @click="loadScene(sceneName)"
+                    ></v-list-item>
+                </v-list-group>
+            </v-list>
+        </v-menu>
+        
+        <!-- 主布局容器 -->
+        <div class="main-layout">
+            <!-- Canvas 容器，宽度由计算属性控制 -->
+            <v-main class="canvas-container" :style="{ width: mainContentWidth }">
+                <!-- canvas -->
+                <canvas id="drop-zone"></canvas>
+                <!-- FPS 计数器，由 v-if 控制显示 -->
+                <div v-if="showFPS" class="fps-counter">
+                    FPS: {{ Math.round(currentFPS) }}
+                </div>
+                <!-- pointerLock Controls 的遮罩层 -->
+                <div id="blocker" ref="blocker" v-show="controlMode === 'pointerLock'">
+                    <div id="instructions" @click="lockPointer">
+                        <p style="font-size: 36px">点击以开始</p>
+                        <p>
+                            W, A, S, D = 移动<br/>
+                            鼠标 = 环顾四周<br/>
+                            ESC = 解锁鼠标
+                        </p>
+                    </div>
+                </div>
+                <!-- 统计信息面板 -->
+                <div v-if="showStatistics" class="statistics-panel">
+                    <v-card class="dialog-card" rounded="lg">
+                         <v-card-title class="text-h5 font-weight-bold pa-4">统计信息</v-card-title>
+                         <v-card-text class="pa-4">
+                             <v-row>
+                                 <!-- 第一列 -->
+                                 <v-col cols="12" md="6">
+                                     <v-list bg-color="transparent" class="stat-list">
+                                         <v-list-item><v-row no-gutters align="center"><v-col>帧率 (FPS)</v-col><v-col class="text-grey-lighten-1 text-right">{{ Math.round(statistics.fps) }}</v-col></v-row></v-list-item>
+                                         <v-list-item><v-row no-gutters align="center"><v-col>帧时间 (Frame Time)</v-col><v-col class="text-grey-lighten-1 text-right">{{ statistics.frameTime }} ms</v-col></v-row></v-list-item>
+                                         <v-list-item><v-row no-gutters align="center"><v-col>Splat 数量</v-col><v-col class="text-grey-lighten-1 text-right">{{ statistics.splatNum }}</v-col></v-row></v-list-item>
+                                     </v-list>
+                                 </v-col>
+                                 <!-- 第二列 -->
+                                 <v-col cols="12" md="6">
+                                     <v-list bg-color="transparent" class="stat-list">
+                                         <v-list-item><v-row no-gutters align="center"><v-col>上次排序耗时 (Sort Time)</v-col><v-col class="text-grey-lighten-1 text-right">{{ statistics.lastSortTime }} ms</v-col></v-row></v-list-item>
+                                         <v-list-item><v-row no-gutters align="center"><v-col>分辨率</v-col><v-col class="text-grey-lighten-1 text-right">{{ statistics.width }} x {{ statistics.height }}</v-col></v-row></v-list-item>
+                                         <v-list-item><v-row no-gutters align="center"><v-col>DPR</v-col><v-col class="text-grey-lighten-1 text-right">{{ statistics.dpr }}</v-col></v-row></v-list-item>
+                                     </v-list>
+                                 </v-col>
+                             </v-row>
+                         </v-card-text>
+                         <v-card-actions class="pa-4">
+                             <v-spacer></v-spacer>
+                             <v-btn variant="tonal" @click="showStatistics = false">关闭</v-btn>
+                         </v-card-actions>
+                    </v-card>
+                </div>
+            </v-main>
 
+            <!-- 分隔条 -->
+            <div v-if="sceneManager" class="splitter" @mousedown="startResize"></div>
+
+            <!-- 右侧场景管理面板，通过 v-if 控制显示/隐藏 -->
+            <v-sheet v-if="sceneManager" :style="{ width: panelWidth + 'px' }" class="scene-panel">
+                <div class="d-flex pa-4 align-center">
+                    <div class="text-h6 flex-grow-1">场景管理</div>
+                    <v-btn
+                        icon="mdi-close"
+                        variant="text"
+                        @click="sceneManager = false"
+                    ></v-btn>
+                </div>
+                <v-divider></v-divider>
+                <!-- 将列表包裹在一个带边框和内边距的div中 -->
+                <div class="scrollable-list-container">
+                    <v-list selectable class="scrollable-list">
+                        <v-list-item v-if="sceneList.length === 0">
+                            <v-list-item-title class="text-center text-grey">Scene list is empty</v-list-item-title>
+                        </v-list-item>
                         <v-list-item
-                            v-for="option in qualityOptions"
-                            :key="option.id"
-                            :title="option.title"
-                            @click="setQuality(option.id)"
+                            v-for="scene in sceneList"
+                            :key="scene.uid"
+                            :title="scene.name"
+                            :active="scene.uid === selectedSceneUID"
+                            @click="selectScene(scene.uid)"
                         >
                             <template v-slot:append>
-                                <!-- 如果当前质量与选项匹配，显示一个勾 -->
-                                <v-icon v-if="quality === option.id">mdi-check</v-icon>
+                                <v-btn 
+                                    icon="mdi-delete" 
+                                    variant="text" 
+                                    size="small"
+                                    @click.stop="removeScene(scene.uid)"
+                                ></v-btn>
                             </template>
                         </v-list-item>
-                    </v-list-group>
-                    <!-- 操作说明 -->
-                    <v-list-item 
-                        @click="showInstructions = true" 
-                        prepend-icon="mdi-help-circle-outline" 
-                        title="操作说明">
-                    </v-list-item>
-                    <!-- 统计面版 -->
-                    <v-list-item 
-                        @click="showStatistics = true" 
-                        prepend-icon="mdi-chart-bar" 
-                        title="统计信息">
-                    </v-list-item>
-                </v-list>
-            </v-menu>
-
-            <!-- 修改：使用 v-dialog 实现悬浮窗 -->
-            <v-dialog v-model="showInstructions" location="bottom" max-width="900px" class="ma-4">
-                <v-card class="instructions-card" rounded="lg">
-                    <v-card-title class="text-h5 font-weight-bold pa-4">操作说明</v-card-title>
-                    <v-card-text class="pa-4">
-                        <!-- PC端说明 -->
-                        <div v-if="!isMobile">
-                            <v-list-subheader>轨道控制 (Orbit)</v-list-subheader>
-                            <v-list-item><v-row align="center"><v-col cols="5">旋转视角</v-col><v-col cols="7" class="text-grey-lighten-1">按住鼠标左键并拖动</v-col></v-row></v-list-item>
-                            <v-list-item><v-row align="center"><v-col cols="5">缩放</v-col><v-col cols="7" class="text-grey-lighten-1">滚动鼠标滚轮</v-col></v-row></v-list-item>
-                            <v-list-item><v-row align="center"><v-col cols="5">平移</v-col><v-col cols="7" class="text-grey-lighten-1">按住鼠标右键并拖动</v-col></v-row></v-list-item>
-                            <v-divider class="my-2"></v-divider>
-                            <v-list-subheader>第一人称 (PointerLock)</v-list-subheader>
-                            <v-list-item><v-row align="center"><v-col cols="5">转动视角</v-col><v-col cols="7" class="text-grey-lighten-1">移动鼠标</v-col></v-row></v-list-item>
-                            <v-list-item><v-row align="center"><v-col cols="5">移动</v-col><v-col cols="7" class="text-grey-lighten-1">W / A / S / D</v-col></v-row></v-list-item>
-                            <v-list-item><v-row align="center"><v-col cols="5">退出模式</v-col><v-col cols="7" class="text-grey-lighten-1">ESC</v-col></v-row></v-list-item>
-                            <v-divider class="my-2"></v-divider>
-                            <v-list-subheader>飞行模式 (Fly)</v-list-subheader>
-                            <v-list-item><v-row align="center"><v-col cols="5">调整方向</v-col><v-col cols="7" class="text-grey-lighten-1">按住鼠标左键并拖动</v-col></v-row></v-list-item>
-                            <v-list-item><v-row align="center"><v-col cols="5">前进/后退</v-col><v-col cols="7" class="text-grey-lighten-1">W / S</v-col></v-row></v-list-item>
-                            <v-list-item><v-row align="center"><v-col cols="5">左右平移</v-col><v-col cols="7" class="text-grey-lighten-1">A / D</v-col></v-row></v-list-item>
-                            <v-list-item><v-row align="center"><v-col cols="5">上下平移</v-col><v-col cols="7" class="text-grey-lighten-1">R / F</v-col></v-row></v-list-item>
-                        </div>
-                        
-                        <!-- 移动端说明 -->
-                        <div v-else>
-                            <v-list-subheader>轨道控制 (Orbit)</v-list-subheader>
-                            <v-list-item><v-row align="center"><v-col cols="5">旋转视角</v-col><v-col cols="7" class="text-grey-lighten-1">单指拖动</v-col></v-row></v-list-item>
-                            <v-list-item><v-row align="center"><v-col cols="5">缩放</v-col><v-col cols="7" class="text-grey-lighten-1">双指捏合/张开</v-col></v-row></v-list-item>
-                            <v-list-item><v-row align="center"><v-col cols="5">平移</v-col><v-col cols="7" class="text-grey-lighten-1">双指拖动</v-col></v-row></v-list-item>
-                        </div>
-                    </v-card-text>
-                     <v-card-actions class="pa-4">
-                        <v-spacer></v-spacer>
-                        <v-btn variant="tonal" @click="showInstructions = false">关闭</v-btn>
-                    </v-card-actions>
-                </v-card>
-            </v-dialog>
-            <!-- 统计信息面板 -->
-            <v-dialog v-model="showStatistics" location="bottom" max-width="900px" class="ma-4">
-                <v-card class="floating-card" rounded="lg">
-                    <v-card-title class="text-h5 font-weight-bold pa-4">统计信息</v-card-title>
-                    <v-card-text class="pa-4">
-                        <v-list bg-color="transparent">
-                            <v-list-item><v-row align="center"><v-col cols="6">帧率 (FPS)</v-col><v-col cols="6" class="text-grey-lighten-1">{{ Math.round(statistics.fps) }}</v-col></v-row></v-list-item>
-                            <v-list-item><v-row align="center"><v-col cols="6">帧时间 (Frame Time)</v-col><v-col cols="6" class="text-grey-lighten-1">{{ statistics.frameTime }} ms</v-col></v-row></v-list-item>
-                            <v-list-item><v-row align="center"><v-col cols="6">Splat 数量</v-col><v-col cols="6" class="text-grey-lighten-1">{{ statistics.splatNum }}</v-col></v-row></v-list-item>
-                            <v-list-item><v-row align="center"><v-col cols="6">上次排序耗时 (Sort Time)</v-col><v-col cols="6" class="text-grey-lighten-1">{{ statistics.lastSortTime }} ms</v-col></v-row></v-list-item>
-                            <v-list-item><v-row align="center"><v-col cols="6">分辨率</v-col><v-col cols="6" class="text-grey-lighten-1">{{ statistics.width }}, {{ statistics.height }}</v-col></v-row></v-list-item>
-                            <v-list-item><v-row align="center"><v-col cols="6">DPR</v-col><v-col cols="6" class="text-grey-lighten-1">{{ statistics.dpr }}</v-col></v-row></v-list-item>
-                        </v-list>
-                    </v-card-text>
-                    <v-card-actions class="pa-4">
-                        <v-spacer></v-spacer>
-                        <v-btn variant="tonal" @click="showStatistics = false">关闭</v-btn>
-                    </v-card-actions>
-                </v-card>
-            </v-dialog>
-        </v-app>
-    </div>
-
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/vuetify@3.6.10/dist/vuetify.min.js"></script>
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "/node_modules/three/build/three.module.js",
-                "@tweenjs/tween.js": "/node_modules/@tweenjs/tween.js/dist/tween.esm.js"
-            }
-        }
-    </script>
-    <script type="module">
-        import ImmerScapeViewer from "./src/GSViewer.js";
-        let viewer;
-        const { createApp } = Vue;
-        const { createVuetify } = Vuetify;
-
-        const vuetify = createVuetify();
-
-        const app = createApp({
-            data() {
-                return {
-                    isMobile: false,
-                    menu: false, 
-                    items: [
-                        { id: 'toggle_fps', title: '显示/隐藏FPS', icon: 'mdi-speedometer' },
-                        { id: 'import_file', title: '导入文件', icon: 'mdi-file-import' },
-                    ],
-                    qualityOptions: [
-                        { id: 'low', title: '低' },
-                        { id: 'medium', title: '中' },
-                        { id: 'high', title: '高' },
-                    ],
-                    sceneFiles: [
-                        'chair', 'fit409', 'train',
-                        'flame', 'kitchen', 'girl1_60', 'girl300_360', 
-                    ],
-                    showFPS: false,
-                    currentFPS: 0,
-                    quality: 'medium',
-                    controlMode: 'orbit',
-                    showInstructions: false,
-                    showStatistics: false,
-                    statistics: {
-                        fps: 0,
-                        frameTime: 0,
-                        splatNum: 0,
-                        lastSortTime: 0,
-                        width: 0,
-                        height: 0,
-                        dpr: 0,
-                    },
-                };
-            },
-            computed: {
+                    </v-list>
+                </div>
                 
-            },
-            methods: {
-                handleItemClick(item) { 
-                    switch (item.id) {
-                        case 'toggle_fps':
-                            this.showFPS = !this.showFPS;
-                            break;
-                        case 'import_file':
-                            this.$refs.fileInput.click();
-                            break;
-                        case 'toggle_grid':
-                            break;
-                        default:
-                    }
-                    this.menu = false;
-                },
-                toggleControls(expectMode) {
-                    if (viewer.setControlMode(expectMode)) {
-                        this.controlMode = expectMode;
-                    }
-                },
-                setQuality(level) {
-                    this.quality = level; // 更新UI状态
-                    if (viewer) {
-                        viewer.setQuality(level); // 通知渲染器
-                    }
-                    this.menu = false; // 选择后关闭菜单
-                },
-                onFileSelected(event) {
-                    const file = event.target.files[0];
-                    if (!file) {
-                        return; // 用户可能取消了选择
-                    }
+                <!-- 变换面板 -->
+                <div v-if="selectedSceneTransform" class="transform-panel pa-2">
+                    <div class="text-subtitle-1 mb-2">Transform</div>
+                    
+                    <v-row no-gutters align="center" class="mb-1">
+                        <v-col cols="3" class="transform-row-label">Position</v-col>
+                        <v-col v-for="axis in ['x', 'y', 'z']" :key="'pos-' + axis" class="pa-1">
+                            <v-text-field 
+                                v-model.number="selectedSceneTransform.position[axis]"
+                                density="compact" hide-details variant="outlined"
+                            >
+                                <template v-slot:prepend-inner>
+                                    <span class="draggable-label" @mousedown="startDrag($event, 'position', axis)">{{ axis.toUpperCase() }}</span>
+                                </template>
+                            </v-text-field>
+                        </v-col>
+                    </v-row>
+                    
+                    <v-row no-gutters align="center" class="mb-1">
+                        <v-col cols="3" class="transform-row-label">Rotation</v-col>
+                        <v-col v-for="axis in ['x', 'y', 'z']" :key="'rot-' + axis" class="pa-1">
+                            <v-text-field 
+                                v-model.number="selectedSceneTransform.rotation[axis]"
+                                density="compact" hide-details variant="outlined"
+                            >
+                                <template v-slot:prepend-inner>
+                                    <span class="draggable-label" @mousedown="startDrag($event, 'rotation', axis)">{{ axis.toUpperCase() }}</span>
+                                </template>
+                            </v-text-field>
+                        </v-col>
+                    </v-row>
+
+                    <v-row no-gutters align="center" class="mb-1">
+                        <v-col cols="3" class="transform-row-label">Scale</v-col>
+                        <v-col v-for="axis in ['x', 'y', 'z']" :key="'scl-' + axis" class="pa-1">
+                            <v-text-field 
+                                v-model.number="selectedSceneTransform.scale[axis]"
+                                density="compact" hide-details variant="outlined"
+                            >
+                                <template v-slot:prepend-inner>
+                                    <span class="draggable-label" @mousedown="startDrag($event, 'scale', axis)">{{ axis.toUpperCase() }}</span>
+                                </template>
+                            </v-text-field>
+                        </v-col>
+                    </v-row>
+                </div>
+                <div v-else class="pa-4 text-center text-grey">
+                    Select a scene to edit its properties
+                </div>
+            </v-sheet>
+        </div>
+
+        <!-- 隐藏的文件输入框 -->
+        <input type="file" ref="fileInput" @change="onFileSelected" style="display: none;" />
+        <!-- 操作说明 Dialog -->
+        <v-dialog v-model="showInstructions" location="bottom" max-width="900px" class="ma-4">
+            <v-card class="instructions-card" rounded="lg">
+                <v-card-title class="text-h5 font-weight-bold pa-4">操作说明</v-card-title>
+                <v-card-text class="pa-4">
+                    <!-- PC端说明 -->
+                    <div v-if="!isMobile">
+                        <v-list-subheader>轨道控制 (Orbit)</v-list-subheader>
+                        <v-list-item><v-row align="center"><v-col cols="5">旋转视角</v-col><v-col cols="7" class="text-grey-lighten-1">按住鼠标左键并拖动</v-col></v-row></v-list-item>
+                        <v-list-item><v-row align="center"><v-col cols="5">缩放</v-col><v-col cols="7" class="text-grey-lighten-1">滚动鼠标滚轮</v-col></v-row></v-list-item>
+                        <v-list-item><v-row align="center"><v-col cols="5">平移</v-col><v-col cols="7" class="text-grey-lighten-1">按住鼠标右键并拖动</v-col></v-row></v-list-item>
+                        <v-divider class="my-2"></v-divider>
+                        <v-list-subheader>第一人称 (PointerLock)</v-list-subheader>
+                        <v-list-item><v-row align="center"><v-col cols="5">转动视角</v-col><v-col cols="7" class="text-grey-lighten-1">移动鼠标</v-col></v-row></v-list-item>
+                        <v-list-item><v-row align="center"><v-col cols="5">移动</v-col><v-col cols="7" class="text-grey-lighten-1">W / A / S / D</v-col></v-row></v-list-item>
+                        <v-list-item><v-row align="center"><v-col cols="5">退出模式</v-col><v-col cols="7" class="text-grey-lighten-1">ESC</v-col></v-row></v-list-item>
+                        <v-divider class="my-2"></v-divider>
+                        <v-list-subheader>飞行模式 (Fly)</v-list-subheader>
+                        <v-list-item><v-row align="center"><v-col cols="5">调整方向</v-col><v-col cols="7" class="text-grey-lighten-1">按住鼠标左键并拖动</v-col></v-row></v-list-item>
+                        <v-list-item><v-row align="center"><v-col cols="5">前进/后退</v-col><v-col cols="7" class="text-grey-lighten-1">W / S</v-col></v-row></v-list-item>
+                        <v-list-item><v-row align="center"><v-col cols="5">左右平移</v-col><v-col cols="7" class="text-grey-lighten-1">A / D</v-col></v-row></v-list-item>
+                        <v-list-item><v-row align="center"><v-col cols="5">上下平移</v-col><v-col cols="7" class="text-grey-lighten-1">R / F</v-col></v-row></v-list-item>
+                    </div>
+                    
+                    <!-- 移动端说明 -->
+                    <div v-else>
+                        <v-list-subheader>轨道控制 (Orbit)</v-list-subheader>
+                        <v-list-item><v-row align="center"><v-col cols="5">旋转视角</v-col><v-col cols="7" class="text-grey-lighten-1">单指拖动</v-col></v-row></v-list-item>
+                        <v-list-item><v-row align="center"><v-col cols="5">缩放</v-col><v-col cols="7" class="text-grey-lighten-1">双指捏合/张开</v-col></v-row></v-list-item>
+                        <v-list-item><v-row align="center"><v-col cols="5">平移</v-col><v-col cols="7" class="text-grey-lighten-1">双指拖动</v-col></v-row></v-list-item>
+                    </div>
+                </v-card-text>
+                 <v-card-actions class="pa-4">
+                    <v-spacer></v-spacer>
+                    <v-btn variant="tonal" @click="showInstructions = false">关闭</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+        <!-- 状态通知条 -->
+        <v-snackbar v-model="snackbar.show" :timeout="4000" location="bottom right">
+            {{ snackbar.text }}
+            <template v-slot:actions>
+                <v-btn color="blue" variant="text" @click="snackbar.show = false">
+                    关闭
+                </v-btn>
+            </template>
+        </v-snackbar>
+    </v-app>
+</div>
+
+<!-- Vue and Vuetify JS -->
+<script src="https://cdn.jsdelivr.net/npm/vue@3.x/dist/vue.global.prod.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/vuetify@3.x/dist/vuetify.min.js"></script>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "/node_modules/three/build/three.module.js",
+            "@tweenjs/tween.js": "/node_modules/@tweenjs/tween.js/dist/tween.esm.js"
+        }
+    }
+</script>
+<script type="module">
+    import ImmerScapeViewer from "./src/GSViewer.js";
+    const { createApp, ref, onMounted, nextTick, computed, watch, reactive } = Vue;
+    const { createVuetify } = Vuetify;
+
+    const vuetify = createVuetify();
+
+    createApp({
+        setup() {
+            let viewer;
+            // this
+            const isMobile = ref(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
+            const menu = ref(false);
+
+            const sceneManager = ref(false);
+            const toggleSceneManager = () => {
+                sceneManager.value = !sceneManager.value;
+            };
+            const panelWidth = ref(400);
+            const mainContentWidth = computed(() => {
+                return sceneManager.value ? `calc(100% - ${panelWidth.value}px)` : '100%';
+            });
+            const onResize = (event) => {
+                const newWidth = window.innerWidth - event.clientX;
+                panelWidth.value = Math.max(300, Math.min(800, newWidth));
+            };
+            const stopResize = () => {
+                window.removeEventListener('mousemove', onResize);
+                window.removeEventListener('mouseup', stopResize);
+            };
+            const startResize = (event) => {
+                event.preventDefault();
+                window.addEventListener('mousemove', onResize);
+                window.addEventListener('mouseup', stopResize);
+            };
+
+            const showFPS = ref(false);
+            const currentFPS = ref(0);
+            const toggleFPS = () => {
+                showFPS.value = !showFPS.value;
+            };
+
+            const fileInput = ref(null);
+            const onFileSelected = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                if (viewer) {
                     viewer.fetchSceneWithNative(file);
-                },
-                loadScene(sceneName) {
-                    if (viewer) {
-                        const url = `/scenes/${sceneName}.spb`;
-                        viewer.fetchSceneWithURL(url);
-                    }
-                    this.menu = false; // 点击后关闭菜单
-                },
-                lockPointer() {
-                    if (viewer) {
-                        viewer.lockPointer();
-                    }
-                },
-            },
-            mounted() {
-                this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-                const canvas = this.$refs.myCanvas;
+                }
+            };
+            const toggleImport = () => {
+                fileInput.value.click();
+            };
+
+            const controlMode = ref('orbit');
+            const toggleControls = (expectMode) => {
+                if (viewer && viewer.setControlMode(expectMode)) {
+                    controlMode.value = expectMode;
+                }
+            };
+            const lockPointer = () => {
+                if (viewer) {
+                    viewer.lockPointer();
+                }
+            };
+
+            const showInstructions = ref(false);
+
+            const showStatistics = ref(false);
+            const statistics = reactive({
+                fps: 0,
+                frameTime: 0,
+                splatNum: 0,
+                lastSortTime: 0,
+                width: 0,
+                height: 0,
+                dpr: 0,
+            });
+
+            const cloudSceneFiles = [
+                'chair', 'fit409', 'train',
+                'flame', 'kitchen', 'girl1_60',
+            ];
+            const loadScene = (sceneName) => {
+                if (viewer) {
+                    viewer.fetchSceneWithURL(`/scenes/${sceneName}.spb`);
+                }
+            };
+
+            const sceneList = ref([]);
+            const removeScene = (sceneId) => {
+                sceneList.value = sceneList.value.filter(scene => scene.uid !== sceneId);
+                if (viewer) {
+                    viewer.removeScene(sceneId);
+                }
+            };
+            const snackbar = reactive({
+                show: false,
+                text: '',
+            });
+            const selectedSceneUID = ref('');
+            const selectScene = (uid) => {
+                selectedSceneUID.value = uid;
+                if (viewer) {
+                    viewer.switchToScene(uid);
+                }
+            };
+
+            const selectedSceneTransform = computed(() => {
+                if (selectedSceneUID.value === null) return null;
+                const scene = sceneList.value.find(s => s.uid === selectedSceneUID.value);
+                return scene ? scene.transform : null;
+            });
+            const dragState = reactive({
+                active: false,
+                property: null,
+                axis: null,
+                startX: 0,
+                initialValue: 0,
+            });
+            const startDrag = (event, property, axis) => {
+                if (!selectedSceneTransform.value) return;
+                event.preventDefault();
+                dragState.active = true;
+                dragState.property = property;
+                dragState.axis = axis;
+                dragState.startX = event.clientX;
+                dragState.initialValue = selectedSceneTransform.value[property][axis];
+                
+                window.addEventListener('mousemove', onDrag);
+                window.addEventListener('mouseup', stopDrag);
+            };
+            const onDrag = (event) => {
+                if (!dragState.active) return;
+                const deltaX = event.clientX - dragState.startX;
+                let sensitivity = 0.1;
+                if (dragState.property === 'scale') {
+                    sensitivity = 0.01;
+                    dragState.axis = 'x';
+                }
+                if (dragState.property === 'rotation') sensitivity = 0.5;
+
+                const newValue = dragState.initialValue + deltaX * sensitivity;
+                selectedSceneTransform.value[dragState.property][dragState.axis] = parseFloat(newValue.toFixed(2));
+                if (dragState.property === 'scale') {
+                    selectedSceneTransform.value[dragState.property].y = selectedSceneTransform.value[dragState.property].x;
+                    selectedSceneTransform.value[dragState.property].z = selectedSceneTransform.value[dragState.property].x;
+                }
+            };
+            const stopDrag = () => {
+                dragState.active = false;
+                window.removeEventListener('mousemove', onDrag);
+                window.removeEventListener('mouseup', stopDrag);
+            };
+            watch(selectedSceneTransform, (newValue) => {
+                if (viewer && newValue) {
+                    viewer.updateTransform();
+                }
+            }, { deep: true });
+
+            onMounted(() => {
+                console.log(document.getElementById('drop-zone'))
                 viewer = new ImmerScapeViewer();
                 viewer.run();
                 viewer.fetchSceneWithURL("/scenes/chair.ply");
+                viewer.addExternalListener((msg) => {
+                    if (msg.sceneLoaded) {
+                        const exists = sceneList.value.some(scene => scene.uid === msg.uid);
+                        if (!exists) {
+                            sceneList.value.push({
+                                uid: msg.uid,
+                                name: msg.name,
+                                transform: msg.transform,
+                            });
+                        }
+                        snackbar.show = false;
+                        selectedSceneUID.value = msg.uid;
+                    } else if (msg.startLoad) {
+                        snackbar.text = 'start to load...';
+                        snackbar.show = true;
+                    } else if (msg.failLoad) {
+                        snackbar.text = `fail to load: ${msg.error}`;
+                        snackbar.show = true;
+                    }
+                })
 
                 setInterval(() => {
                     if (viewer) {
-                        this.currentFPS = viewer.getFPS() || 0;
-                        this.statistics.fps = this.currentFPS || 0;
-                        this.statistics.frameTime = viewer.getFrameTime ? (viewer.getFrameTime() || 0).toFixed(2) : 'N/A';
-                        this.statistics.splatNum = viewer.getSplatNum ? viewer.getSplatNum() : 'N/A';
-                        this.statistics.lastSortTime = viewer.getLastSortTime ? (viewer.getLastSortTime() || 0).toFixed(2) : 'N/A';
-                        const resolution = viewer.getResolution();
-                        this.statistics.width = resolution.width;
-                        this.statistics.height = resolution.height;
-                        this.statistics.dpr = resolution.dpr;
+                        currentFPS.value = viewer.getFPS ? viewer.getFPS() : 0;
+                        statistics.fps = currentFPS.value;
+                        statistics.frameTime = viewer.getFrameTime ? (viewer.getFrameTime() || 0).toFixed(2) : 'N/A';
+                        statistics.splatNum = viewer.getSplatNum ? viewer.getSplatNum() : 'N/A';
+                        statistics.lastSortTime = viewer.getLastSortTime ? (viewer.getLastSortTime() || 0).toFixed(2) : 'N/A';
+                        const resolution = viewer.getResolution ? viewer.getResolution() : {width:0, height:0, dpr:0};
+                        statistics.width = resolution.width;
+                        statistics.height = resolution.height;
+                        statistics.dpr = resolution.dpr;
                     }
                 }, 1000);
-            }
-        });
+                
+            });
 
-        app.use(vuetify);
-        app.mount('#app');
-    </script>
+            return {
+                isMobile, menu,
+                sceneManager, panelWidth, mainContentWidth, toggleSceneManager, onResize, startResize, stopResize, 
+                showFPS, currentFPS, toggleFPS,
+                fileInput, onFileSelected, toggleImport,
+                controlMode, toggleControls, lockPointer,
+                showInstructions,
+                showStatistics, statistics,
+                cloudSceneFiles, loadScene,
+                sceneList, removeScene, snackbar, selectedSceneUID, selectScene, 
+                selectedSceneTransform, dragState, startDrag, onDrag, stopDrag, 
+            };
+        }
+    }).use(vuetify).mount('#app');
+</script>
+
 </body>
 </html>

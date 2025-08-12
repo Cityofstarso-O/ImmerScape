@@ -41,7 +41,7 @@ export class GSSorter {
                     'count': splatCount,
                 }
             }
-        }, [data.sortBuffer]);
+        }/*, [data.sortBuffer]*/);
     }
 
     sort(mvpMatrix, cameraPositionArray, splatRenderCount, splatSortCount, timestamp) {

@@ -1,5 +1,6 @@
 import { ParserType, LoadType } from "../Global.js";
 import { Utils } from "../Utils.js";
+import * as THREE from "three";
 
 export class GSLoader {
     constructor(eventBus) {
@@ -29,6 +30,15 @@ export class GSLoader {
                 const sceneName = Utils.extractFileName(this.currentFile);
                 data.name = sceneName;
                 data.uid = Utils.getRandomUID();
+                data.transform = {
+                    position: { x: 0, y: 0, z: 0 },
+                    scale: { x: 1, y: 1, z: 1 },
+                    rotation: { x: 0, y: 0, z: 0 },
+                };
+                data.appliedTransform = new THREE.Matrix4();
+                data.modelMatrix = new THREE.Matrix4();
+                data.appliedScale = 1.0;
+                data.sceneScale = 1.0;
                 console.log(`[${(this.recvTime - this.sendTime)}ms] ${data}`);
                 this.eventBus.emit('buffersReady', {
                     data: data,
@@ -36,6 +46,10 @@ export class GSLoader {
                 });
             } else {
                 console.log(`[${(this.recvTime - this.sendTime)}ms] GSLoader ERROR: ${message.error}`);
+                this.eventBus.emit('noteExternalListener', {
+                    failLoad: true,
+                    error: message.error,
+                });
             }
             this.currentFile = '';
         };
@@ -59,6 +73,7 @@ export class GSLoader {
                 'quality': 'medium',
                 'from': 'drag',
             }, [content]);
+            this.noteExternalListener();
         };
 
         this.currentFile = '';  // not blank => is loading
@@ -83,6 +98,7 @@ export class GSLoader {
             'quality': 'medium',
             'from': 'url',
         });
+        this.noteExternalListener();
     }
 
     async readFileFromNative(file) {
@@ -90,5 +106,12 @@ export class GSLoader {
             this.currentFile = file.name;
 			this.reader.readAsArrayBuffer(file);
 		}
+    }
+
+    noteExternalListener(name) {
+        this.eventBus.emit('noteExternalListener', {
+            startLoad: true,
+            name: name,
+        });
     }
 }

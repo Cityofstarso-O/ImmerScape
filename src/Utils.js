@@ -119,7 +119,7 @@ export class Utils {
         if (getFloat16Available) {
             return dataview.getFloat16(byteOffset, littleEndian);
         } else {
-            return uint162fp162f(dataview.getUint16(byteOffset, littleEndian));
+            return fromHalfFloat(dataview.getUint16(byteOffset, littleEndian));
         }
     }
 

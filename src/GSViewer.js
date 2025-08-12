@@ -83,7 +83,7 @@ export default class GSViewer {
         this.__setupCamera();
         this.__setupControls();
 
-        this.sceneHelper.initGizmo(this.camera, this.controls)
+        this.sceneHelper.init(this.camera)
     }
 
     setControlMode(mode) {
@@ -163,8 +163,28 @@ export default class GSViewer {
         this.gsloader.readFileFromNative(file);
     }
 
+    removeScene(uid) {
+        this.gsScene.removeScene(uid);
+    }
+
+    switchToScene(uid) {
+        this.gsScene.switchToScene(uid);
+    }
+
     attemptToSwitchQuality(target) {
 
+    }
+
+    addExternalListener(func) {
+        this.eventBus.on('noteExternalListener', func);
+    }
+
+    applyTransform() {
+        this.gsScene.applyTransform();
+    }
+
+    updateTransform() {
+        this.gsScene.updateTransform();
     }
 
     run() {
@@ -188,10 +208,11 @@ export default class GSViewer {
             this.__updateForRendererSizeChanges();
             this.sceneHelper.update(currentTime, this.deltaT);
 
+            this.graphicsAPI.updateClearColor(0.15, 0.15, 0.15, 1);
+            this.graphicsAPI.updateViewport();
+            this.sceneHelper.renderGrid();
             if (this.__shouldRender()) {
                 // pass 0: gaussian splatting
-                this.graphicsAPI.updateViewport();
-                this.graphicsAPI.updateClearColor();
                 this.shaderManager.setPipeline();
                 this.__updateUniforms();
 
@@ -200,9 +221,9 @@ export default class GSViewer {
                     this.shaderManager.debugLog();
                 }
                 this.graphicsAPI.drawInstanced('TRIANGLE_FAN', 0, 4, this.gsScene.getSplatNum());
-                // pass 1: ui
-                this.sceneHelper.render()
             }
+            // pass 1: ui
+            this.sceneHelper.renderGizmo()
         }
 
         animate(performance.now());
@@ -223,6 +244,12 @@ export default class GSViewer {
                 this.shaderManager.updateUniformTextures(this.gsScene.getBuffers());
                 this.shaderManager.updateUniforms(true);
                 isSet = true;
+                this.eventBus.emit('noteExternalListener', {
+                    sceneLoaded: true,
+                    uid: this.gsScene.getCurrentScene('uid'),
+                    name: this.gsScene.getCurrentScene('name'),
+                    transform: this.gsScene.getCurrentScene('transform'),
+                })
             }
 
             return res;
@@ -254,22 +281,30 @@ export default class GSViewer {
         };
     }();
 
-    __updateUniforms() {
-        if (this.options.enablePointerLock && this.controls === this.pointerLockControls) {
-            this.camera.updateMatrixWorld();
-        }
-        const projMat = this.camera.projectionMatrix.elements;
-        this.shaderManager.updateUniform('viewMatrix', this.camera.matrixWorldInverse.elements);
-        this.shaderManager.updateUniform('projectionMatrix', projMat);
-        this.shaderManager.updateUniform('cameraPosition', this.camera.position.toArray(), true);
-        const focalX = projMat[0] * 0.5 * this.canvas.width;
-        const focalY = projMat[5] * 0.5 * this.canvas.height;
-        this.shaderManager.updateUniform('focal', [focalX, focalY], true);
-        this.shaderManager.updateUniform('invViewport', [1 / this.canvas.width, 1 / this.canvas.height], true);
-        this.shaderManager.updateUniform('timestamp', this.loopedTime);
+    __updateUniforms = function() {
+        const newViewMatrix = new THREE.Matrix4();
 
-        this.shaderManager.updateUniforms();
-    }
+        return function() {
+            if (this.options.enablePointerLock && this.controls === this.pointerLockControls) {
+                this.camera.updateMatrixWorld();
+            }
+            const projMat = this.camera.projectionMatrix.elements;
+            newViewMatrix.copy(this.gsScene.getCurrentScene('modelMatrix'));
+            newViewMatrix.premultiply(this.camera.matrixWorldInverse);
+
+            this.shaderManager.updateUniform('viewMatrix', newViewMatrix.elements);
+            this.shaderManager.updateUniform('projectionMatrix', projMat);
+            this.shaderManager.updateUniform('cameraPosition', this.camera.position.toArray(), true);
+            const focalX = projMat[0] * 0.5 * this.canvas.width;
+            const focalY = projMat[5] * 0.5 * this.canvas.height;
+            this.shaderManager.updateUniform('focal', [focalX, focalY], true);
+            this.shaderManager.updateUniform('invViewport', [1 / this.canvas.width, 1 / this.canvas.height], true);
+            this.shaderManager.updateUniform('timestamp', this.loopedTime);
+            this.shaderManager.updateUniform('sceneScale', this.gsScene.getCurrentScene('sceneScale'));
+
+            this.shaderManager.updateUniforms();
+        }
+    }();
 
     __runSplatSort = function() {
         let sortOnceForNewScene = true;
@@ -336,9 +371,9 @@ export default class GSViewer {
             this.sorter.sortRunning = true;
             const shouldSortAll = forceSortAll;
 
-            mvpMatrix.copy(this.camera.matrixWorld).invert();
-            const mvpCamera = this.perspectiveCamera || this.camera;
-            mvpMatrix.premultiply(mvpCamera.projectionMatrix);
+            mvpMatrix.copy(this.gsScene.getCurrentScene('modelMatrix'));
+            mvpMatrix.premultiply(this.camera.matrixWorldInverse);
+            mvpMatrix.premultiply(this.camera.projectionMatrix);
 
             let gpuAcceleratedSortPromise = Promise.resolve(true);
             if (this.options.gpuAcceleratedSort && (queuedSorts.length <= 1 || queuedSorts.length % 2 === 0)) {
