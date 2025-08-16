@@ -23,6 +23,7 @@ export const FileType = {
     'SPLAT': 2,
     'SPZ': 3,
     'SPB': 4,
+    'GLB':5,
 };
 
 export const GraphicsApiType = {

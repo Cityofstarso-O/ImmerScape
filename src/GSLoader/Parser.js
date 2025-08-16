@@ -2,6 +2,7 @@ import { ParserType, LoadType, FileType } from "../Global.js";
 import { Utils } from "../Utils.js";
 import { PlyLoader } from "./TypeLoader/PlyLoader.js";
 import { SpbLoader } from "./TypeLoader/SpbLoader.js";
+import { GlbLoader } from "./TypeLoader/GlbLoader.js";
 
 console.log('Worker: Parser.js module loaded successfully');
 /*return = {
@@ -20,6 +21,7 @@ const loadFromNative = function() {
         'spz': FileType.SPZ,
         'splat': FileType.SPLAT,
         'spb': FileType.SPB,
+        'glb': FileType.GLB,
     }
     return function(file, quality) {
         const extension = Utils.extractFileExtension(file.name);
@@ -30,6 +32,8 @@ const loadFromNative = function() {
                 return PlyLoader.loadFromNative(file, quality);
             case FileType.SPB:
                 return SpbLoader.loadFromNative(file);
+            case FileType.GLB:
+                return GlbLoader.loadFromNative(file);
             default:
                 return {
                     'valid': false,

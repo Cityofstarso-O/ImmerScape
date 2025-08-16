@@ -135,12 +135,16 @@ export class WebGL {
             'F': { '16': 'HALF_FLOAT', '32': 'FLOAT' },
             'UI': { '8': 'UNSIGNED_BYTE', '16': 'UNSIGNED_SHORT', '32': 'UNSIGNED_INT'},
             'I': { '8': 'BYTE', '16': 'SHORT', '32': 'INT'},
+            '_': { '8': 'UNSIGNED_BYTE' },
         }
         const getFormatType = function(interformat) {
-            const colorPart = interformat.match(/^(RGBA|RGB|RG|R)/)?.[0];
+            let colorPart = interformat.match(/^(RGBA|RGB|RG|R)/)?.[0];
+            if (colorPart === "R") {
+                colorPart = "RED"
+            }
             const isInteger = interformat.includes('UI');
             const match = interformat.match(/(\d+)([A-Za-z]+)$/);
-            const [, number, suffix] = match;
+            const [, number, suffix] = match || ['', '8', '_'];
             return { format: isInteger ? `${colorPart}_INTEGER` : colorPart, type: glType[suffix][number] || 'UNSIGNED_BYTE' };
         }
 
@@ -174,7 +178,7 @@ export class WebGL {
             gl.texImage2D(
                 gl.TEXTURE_2D,
                 0,                          // mipmap level
-                gl[desc.format],            // format
+                gl[desc.format],            // internal format
                 desc.width,                 // width
                 desc.height,                // height
                 0,                          // border

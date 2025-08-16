@@ -6,7 +6,6 @@ let useSharedMemory;
 let splatCount;
 let indexesToSortOffset;
 let sortedIndexesOffset;
-let precomputedDistancesOffset;
 let mappedDistancesOffset;
 let frequenciesOffset;
 let centersOffset;
@@ -14,11 +13,9 @@ let modelViewProjOffset;
 let debugOffset;
 let memsetZero;
 let distanceMapRange;
-let uploadedSplatCount;
 let gsType;
+let chunkBased;
 let transferablesortedIndexesOut;
-let transferableIndexToSort;
-let transferablePrecomputedDistance;
 const Constants = {
     BytesPerFloat: 4,
     BytesPerInt: 4,
@@ -26,44 +23,30 @@ const Constants = {
     MaxScenes: 32
 };
 
-function sort(splatSortCount, splatRenderCount, modelViewProj, usePrecomputedDistances, timestamp) {
+function sort(modelViewProj, timestamp) {
+    // TODO
+    // if chunkBased, cull on wasm. related value: splatSortCount, indexToSort
+    let splatSortCount = splatCount;
     const sortStartTime = performance.now();
-    if (!useSharedMemory) {
-        const indexesToSort = new Uint32Array(wasmMemory, indexesToSortOffset, transferableIndexToSort.byteLength / Constants.BytesPerInt);
-        indexesToSort.set(transferableIndexToSort);
-        if (usePrecomputedDistances) {
-            let precomputedDistances = new Int32Array(wasmMemory, precomputedDistancesOffset,
-                                                      transferablePrecomputedDistance.byteLength / Constants.BytesPerInt);
-            precomputedDistances.set(transferablePrecomputedDistance);
-        }
-    }
     if (!memsetZero) memsetZero = new Uint32Array(distanceMapRange);
     new Float32Array(wasmMemory, modelViewProjOffset, 16).set(modelViewProj);
     new Uint32Array(wasmMemory, frequenciesOffset, distanceMapRange).set(memsetZero);
     const wasmStartTime = performance.now();
-    wasmInstance.exports.sortIndexes(indexesToSortOffset, centersOffset, precomputedDistancesOffset,
+    wasmInstance.exports.sortIndexes(indexesToSortOffset, centersOffset,
                                      mappedDistancesOffset, frequenciesOffset, modelViewProjOffset,
                                      sortedIndexesOffset, distanceMapRange, timestamp,
-                                     splatSortCount, splatRenderCount, splatCount, 
-                                     usePrecomputedDistances, gsType, debugOffset);
+                                     splatSortCount, splatCount, 
+                                     gsType, debugOffset);
     const sortMessage = {
         'sortDone': true,
         'splatSortCount': splatSortCount,
-        'splatRenderCount': splatRenderCount,
         'sortTime': 0
     };
     const transferables = [];
     if (!useSharedMemory) {
-        transferablesortedIndexesOut.set(new Uint32Array(wasmMemory, sortedIndexesOffset, splatRenderCount));
+        transferablesortedIndexesOut.set(new Uint32Array(wasmMemory, sortedIndexesOffset, splatSortCount));
         transferables.push(transferablesortedIndexesOut.buffer);
         sortMessage.sortedIndexes = transferablesortedIndexesOut;
-
-        transferables.push(transferableIndexToSort.buffer);
-        sortMessage.indexesToSort = transferableIndexToSort;
-        if (usePrecomputedDistances) {
-            transferables.push(transferablePrecomputedDistance.buffer);
-            sortMessage.precomputedDistances = transferablePrecomputedDistance;
-        }
     }
     const sortEndTime = performance.now();
     sortMessage.sortTime = sortEndTime - sortStartTime;
@@ -71,23 +54,11 @@ function sort(splatSortCount, splatRenderCount, modelViewProj, usePrecomputedDis
 }
 
 self.onmessage = async (e) => {
-    if (e.data.centers) { // TODO: change the code to 'update center' or just delete it
-        const centers = e.data.centers;
-        const sceneIndexes = e.data.sceneIndexes;
-        console.log(e.data, centersOffset, wasmMemory)
-        new Int32Array(wasmMemory, centersOffset + e.data.range.from * Constants.BytesPerInt * 4,
-                           e.data.range.count * 4).set(new Int32Array(centers));
-        uploadedSplatCount = e.data.range.from + e.data.range.count;
-    } else if (e.data.sort) {
-        const renderCount = Math.min(e.data.sort.splatRenderCount || 0, uploadedSplatCount);
-        const sortCount = Math.min(e.data.sort.splatSortCount || 0, uploadedSplatCount);
-        const usePrecomputedDistances = e.data.sort.usePrecomputedDistances;
+    if (e.data.sort) {
         if (!useSharedMemory) {
             transferablesortedIndexesOut = e.data.sort.sortedIndexes;
-            transferableIndexToSort = e.data.sort.indexesToSort;
-            if (usePrecomputedDistances) transferablePrecomputedDistance = e.data.sort.precomputedDistances;
         }
-        sort(sortCount, renderCount, e.data.sort.modelViewProj, usePrecomputedDistances, e.data.sort.timestamp);
+        sort(e.data.sort.modelViewProj, e.data.sort.timestamp);
     } else if (e.data.init) {
         if (wasmInstance || wasmMemory) {
             wasmInstance = null;
@@ -100,13 +71,12 @@ self.onmessage = async (e) => {
         useSharedMemory = data.useSharedMemory;
         distanceMapRange = data.distanceMapRange;
         gsType = data.gsType;
-        uploadedSplatCount = 0;
+        chunkBased = data.chunkBased;
         const CENTERS_BYTES_PER_ENTRY = data.centers.byteLength / splatCount;
         const matrixSize = 16 * Constants.BytesPerFloat;
         const memoryRequiredForIndexesToSort = splatCount * Constants.BytesPerInt;
         const memoryRequiredForCenters = splatCount * CENTERS_BYTES_PER_ENTRY;
         const memoryRequiredForModelViewProjectionMatrix = matrixSize;
-        const memoryRequiredForPrecomputedDistances = splatCount * Constants.BytesPerInt;
         const memoryRequiredForMappedDistances = splatCount * Constants.BytesPerInt;
         const memoryRequiredForIntermediateSortBuffers = distanceMapRange * Constants.BytesPerInt;
         const memoryRequiredForSortedIndexes = splatCount * Constants.BytesPerInt;
@@ -115,7 +85,6 @@ self.onmessage = async (e) => {
         const totalRequiredMemory = memoryRequiredForIndexesToSort +
                                     memoryRequiredForCenters +
                                     memoryRequiredForModelViewProjectionMatrix +
-                                    memoryRequiredForPrecomputedDistances +
                                     memoryRequiredForMappedDistances +
                                     memoryRequiredForIntermediateSortBuffers +
                                     memoryRequiredForSortedIndexes +
@@ -149,28 +118,28 @@ self.onmessage = async (e) => {
         indexesToSortOffset = 0;
         centersOffset = indexesToSortOffset + memoryRequiredForIndexesToSort;
         modelViewProjOffset = centersOffset + memoryRequiredForCenters;
-        precomputedDistancesOffset = modelViewProjOffset + memoryRequiredForModelViewProjectionMatrix;
-        mappedDistancesOffset = precomputedDistancesOffset + memoryRequiredForPrecomputedDistances;
+        mappedDistancesOffset = modelViewProjOffset + memoryRequiredForModelViewProjectionMatrix;
         frequenciesOffset = mappedDistancesOffset + memoryRequiredForMappedDistances;
         sortedIndexesOffset = frequenciesOffset + memoryRequiredForIntermediateSortBuffers;
         debugOffset = sortedIndexesOffset + memoryRequiredForSortedIndexes;
         wasmMemory = sorterWasmImport.env.memory.buffer;
 
         // update centers
-        const centers = data.centers;
-        new Int32Array(wasmMemory, centersOffset + data.range.from * Constants.BytesPerInt * 4).set(new Int32Array(centers));
-        uploadedSplatCount = data.range.from + data.range.count;
+        new Int32Array(wasmMemory, centersOffset, data.centers.byteLength / Constants.BytesPerInt).set(new Int32Array(data.centers));
+        // update indexToSort
+        if (true || !chunkBased) {
+            const index2sort = new Uint32Array(wasmMemory, indexesToSortOffset, splatCount);
+            for (let i = 0; i < splatCount; ++i) {
+                index2sort[i] = i;
+            }
+        }
 
         console.log('setup sort worker', data.sorterWasmUrl)
         if (useSharedMemory) {
             self.postMessage({
                 'sortSetupPhase1Complete': true,
-                'indexesToSortBuffer': wasmMemory,
-                'indexesToSortOffset': indexesToSortOffset,
                 'sortedIndexesBuffer': wasmMemory,
                 'sortedIndexesOffset': sortedIndexesOffset,
-                'precomputedDistancesBuffer': wasmMemory,
-                'precomputedDistancesOffset': precomputedDistancesOffset,
                 'transformsBuffer': wasmMemory,
             });
         } else {

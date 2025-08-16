@@ -194,11 +194,11 @@ export class ShaderManager {
             default:
                 break;
         }
-        const key = data.gsType + '/' + data.quality;
+        const key = data.gsType + '/' + data.quality + '/' + data.chunkBased;
 
         // if we have no cache for this program, build one
         if (!this.programs[key]) {
-            const vs = this.createVS(data.buffers, gsKernel);
+            const vs = this.createVS(data.buffers, gsKernel, data.chunkBased);
             const fs = this.createFS();
             //console.log(vs);
             //console.log(fs);
@@ -224,7 +224,7 @@ export class ShaderManager {
         }
     }
 
-    createVS(buffers, gsKernel) {
+    createVS(buffers, gsKernel, chunkBased) {
         let vs = `#version 300 es 
             precision highp float;
         `
@@ -263,7 +263,7 @@ export class ShaderManager {
 
         vs += ShaderManager.shaderHelperFunc;
 
-        vs += gsKernel.getFetchFunc(buffers);
+        vs += gsKernel.getFetchFunc(buffers, chunkBased);
 
         vs += `
             void main()
@@ -271,7 +271,7 @@ export class ShaderManager {
                 vec3 splatCenter;
                 vec4 splatColor;
                 mat3 Vrk;
-                ${gsKernel.getFetchParams()}
+                ${gsKernel.getFetchParams(chunkBased)}
 
                 splatCenter *= sceneScale;
                 vec4 viewCenter = viewMatrix * vec4(splatCenter, 1.0);

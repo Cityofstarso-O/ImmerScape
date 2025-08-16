@@ -88,7 +88,7 @@ export class Gizmo {
         this.attributes = this.graphicsAPI.getAttrib(this.program);
         this.vao = this.graphicsAPI.setupCircleVAO(this.attributes['a_position'], this.attributes['a_uv']);
         
-        this.activeBindID = 3;
+        this.activeBindID = 7;
         this.graphicsAPI.bindTexture(this.texture, this.activeBindID);
         this.graphicsAPI.updateProgram(this.program);
         this.graphicsAPI.updateUniform(this.uniforms['u_texture'], '1i', this.activeBindID);
