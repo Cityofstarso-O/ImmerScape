@@ -156,13 +156,31 @@ export class Utils {
         return Math.max(Math.min(x, max), min);
     }
 
+    static exactDivideUp(a, divide) {
+        return Math.floor((a + divide - 1) / divide);
+    }
+
+    static alignUp(a, alignment) {
+        return Utils.exactDivideUp(a, alignment) * alignment;
+    }
+
     // x is expected to be between [0, 1]
     static float2uint8(x, min = 0, max = 1) {
-        return Utils.clamp(Math.round((x - min) / (max - min) * 255), 0, 255);
+        return Utils.float2uintX(x, 8, min, max);
     }
 
     static uint82float(x, min = 0, max = 1) {
-        return Utils.clamp(x, 0, 255) / 255 * (max - min) + min;
+        return Utils.uintX2float(x, 8, min, max);
+    }
+
+    static float2uintX(x, X, min = 0, max = 1) {
+        const range = (1 << X) - 1;
+        return Utils.clamp(Math.round((x - min) / (max - min) * range), 0, range);
+    }
+
+    static uintX2float(x, X, min = 0, max = 1) {
+        const range = (1 << X) - 1;
+        return Utils.clamp(x, 0, range) / range * (max - min) + min;
     }
 
     static packFloat2rgba(r, g, b, a, out, offset = 0) {

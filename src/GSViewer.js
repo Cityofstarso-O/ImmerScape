@@ -21,8 +21,7 @@ export default class GSViewer {
             destroyOnLoad: false,
             sharedMemoryForWorkers: false,
             enableSIMDInSort: true,
-            gpuAcceleratedSort: false,
-            cacheShaders: false,
+            cacheShaders: true,
             enablePointerLock: true,
 
             initialCameraPosition: undefined,
@@ -61,7 +60,6 @@ export default class GSViewer {
         this.direction = new THREE.Vector3();
         this.isLeftMouseDown = false;
 
-        this.splatRenderCount = 0;
         this.splatSortCount = 0;
 
         this.startTime = performance.now();
@@ -258,7 +256,7 @@ export default class GSViewer {
 
     __onBuffersReady({ data, sceneName }) {
         this.__shouldRender(true);
-        this.__runSplatSort(false, false, true);
+        this.__runSplatSort(false, true);
     }
 
     __updateForRendererSizeChanges = function() {
@@ -314,107 +312,49 @@ export default class GSViewer {
         const sortViewDir = new THREE.Vector3(0, 0, -1);
         const lastSortViewPos = new THREE.Vector3();
         const sortViewOffset = new THREE.Vector3();
-        const queuedSorts = [];
 
-        const partialSorts = [
-            /*{
-                'angleThreshold': 0.55,
-                'sortFractions': [0.125, 0.33333, 0.75]
-            },
-            {
-                'angleThreshold': 0.65,
-                'sortFractions': [0.33333, 0.66667]
-            },
-            {
-                'angleThreshold': 0.8,
-                'sortFractions': [0.5]
-            }*/
-        ];
-
-        return function(force = false, forceSortAll = false, reset = false) {
+        return function(force = false, reset = false) {
             if (reset) {
                 sortOnceForNewScene = true;
                 return Promise.resolve(false);
             }
             if (!this.sorter.ready) return Promise.resolve(false);
             if (this.sorter.sortRunning) return Promise.resolve(true);
-            // TODO: we sort all splats for now
-            // may use octree to cull on cpu, or compute distance on gpu then cull on wasm
-            this.splatRenderCount = this.gsScene.getSplatNum();
-            if (this.splatRenderCount <= 0) {
+            // we sort all splats
+            // culling on wasm if chunkBased, or we just sort all splats
+            this.splatSortCount = this.gsScene.getSplatNum();
+            if (this.splatSortCount <= 0) {
                 return Promise.resolve(false);
             }
-
-            /*if (this.splatMesh.getSplatCount() <= 0) {
-                this.splatRenderCount = 0;
-                return Promise.resolve(false);
-            }*/
-
-            let angleDiff = 0;
-            let positionDiff = 0;
-            let needsRefreshForRotation = false;
-            let needsRefreshForPosition = false;
 
             sortViewDir.set(0, 0, -1).applyQuaternion(this.camera.quaternion);
-            angleDiff = sortViewDir.dot(lastSortViewDir);
-            positionDiff = sortViewOffset.copy(this.camera.position).sub(lastSortViewPos).length();
+            const angleDiff = sortViewDir.dot(lastSortViewDir);
+            const positionDiff = sortViewOffset.copy(this.camera.position).sub(lastSortViewPos).length();
 
             if (!(force || sortOnceForNewScene)) {
-                if (queuedSorts.length === 0) {
-                    if (angleDiff <= 0.99) needsRefreshForRotation = true;
-                    if (positionDiff >= 1.0) needsRefreshForPosition = true;
-                    if (!needsRefreshForRotation && !needsRefreshForPosition) return Promise.resolve(false);
-                }
+                let needsRefreshForRotation = false;
+                let needsRefreshForPosition = false;
+                if (angleDiff <= 0.99) needsRefreshForRotation = true;
+                if (positionDiff >= 1.0) needsRefreshForPosition = true;
+                if (!needsRefreshForRotation && !needsRefreshForPosition) return Promise.resolve(false);
             }
             sortOnceForNewScene = false;
-            //console.log("start to sortRunning");
+
+            // start to sort
             this.sorter.sortRunning = true;
-            const shouldSortAll = forceSortAll;
 
             mvpMatrix.copy(this.gsScene.getCurrentScene('modelMatrix'));
             mvpMatrix.premultiply(this.camera.matrixWorldInverse);
             mvpMatrix.premultiply(this.camera.projectionMatrix);
 
-            let gpuAcceleratedSortPromise = Promise.resolve(true);
-            if (this.options.gpuAcceleratedSort && (queuedSorts.length <= 1 || queuedSorts.length % 2 === 0)) {
-                // TODO: may use gpu in the future if cpu sort is too slow
-                gpuAcceleratedSortPromise = this.splatMesh.computeDistancesOnGPU(mvpMatrix, this.sortWorkerPrecomputedDistances);
-            }
+            cameraPositionArray[0] = this.camera.position.x;
+            cameraPositionArray[1] = this.camera.position.y;
+            cameraPositionArray[2] = this.camera.position.z;
 
-            gpuAcceleratedSortPromise.then(() => {
-                if (queuedSorts.length === 0) {
-                    if (shouldSortAll) {
-                        queuedSorts.push(this.splatRenderCount);
-                    } else {
-                        for (let partialSort of partialSorts) {
-                            if (angleDiff < partialSort.angleThreshold) {
-                                for (let sortFraction of partialSort.sortFractions) {
-                                    queuedSorts.push(Math.floor(this.splatRenderCount * sortFraction));
-                                }
-                                break;
-                            }
-                        }
-                        queuedSorts.push(this.splatRenderCount);
-                    }
-                }
-                let sortCount = Math.min(queuedSorts.shift(), this.splatRenderCount);
-                this.splatSortCount = sortCount;
+            this.sorter.sort(mvpMatrix, cameraPositionArray, this.splatSortCount, this.loopedTime);
 
-                cameraPositionArray[0] = this.camera.position.x;
-                cameraPositionArray[1] = this.camera.position.y;
-                cameraPositionArray[2] = this.camera.position.z;
-
-                this.sorter.sort(mvpMatrix, cameraPositionArray, this.splatRenderCount, this.splatSortCount, this.loopedTime);
-
-                if (queuedSorts.length === 0) {
-                    lastSortViewPos.copy(this.camera.position);
-                    lastSortViewDir.copy(sortViewDir);
-                }
-
-                return true;
-            });
-
-            return gpuAcceleratedSortPromise;
+            lastSortViewPos.copy(this.camera.position);
+            lastSortViewDir.copy(sortViewDir);
         };
 
     }();

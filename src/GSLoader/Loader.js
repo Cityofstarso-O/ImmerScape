@@ -27,22 +27,22 @@ export class GSLoader {
             this.recvTime = performance.now();
             if (message.valid) {
                 const data = message.data;
-                const sceneName = Utils.extractFileName(this.currentFile);
-                data.name = sceneName;
+                data.name = data.name || Utils.extractFileName(this.currentFile);
                 data.uid = Utils.getRandomUID();
                 data.transform = {
                     position: { x: 0, y: 0, z: 0 },
                     scale: { x: 1, y: 1, z: 1 },
                     rotation: { x: 0, y: 0, z: 0 },
                 };
-                data.appliedTransform = new THREE.Matrix4();
-                data.modelMatrix = new THREE.Matrix4();
-                data.appliedScale = 1.0;
-                data.sceneScale = 1.0;
-                console.log(`[${(this.recvTime - this.sendTime)}ms] ${data}`);
+                data.appliedTransform = data.appliedTransform ? new THREE.Matrix4().fromArray(data.appliedTransform) : new THREE.Matrix4();
+                data.modelMatrix = data.appliedTransform.clone();
+                data.appliedScale = data.appliedScale || 1.0;
+                data.sceneScale = data.appliedScale;
+                data.chunkBased = data.chunkBased || '';
+                console.log(`[${(this.recvTime - this.sendTime)}ms]`);
                 this.eventBus.emit('buffersReady', {
                     data: data,
-                    sceneName: sceneName,
+                    sceneName: data.name,
                 });
             } else {
                 console.log(`[${(this.recvTime - this.sendTime)}ms] GSLoader ERROR: ${message.error}`);

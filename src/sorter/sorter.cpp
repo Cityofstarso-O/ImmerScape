@@ -17,33 +17,25 @@
     out[2] = a[2] * b[8] +  a[6] * b[9] + a[10] * b[10] + a[14] * b[11]; \
     out[3] = a[2] * b[12] +  a[6] * b[13] + a[10] * b[14] + a[14] * b[15];
 
-EXTERN EMSCRIPTEN_KEEPALIVE void sortIndexes(unsigned int* indexes, void* centers, int* precomputedDistances, 
+EXTERN EMSCRIPTEN_KEEPALIVE void sortIndexes(unsigned int* indexes, void* centers, 
                                              int* mappedDistances, unsigned int * frequencies, float* modelViewProj,
                                              unsigned int* indexesOut, unsigned int distanceMapRange, float timestamp,
-                                             unsigned int sortCount, unsigned int renderCount, unsigned int splatCount, 
-                                             bool usePrecomputedDistances, int gsType, float* debug)
+                                             unsigned int sortCount, unsigned int splatCount, 
+                                             int gsType, float* debug)
 {
     int maxDistance = -2147483640;
     int minDistance = 2147483640;
 
-    unsigned int sortStart = renderCount - sortCount;
+    unsigned int sortStart = sortCount - sortCount;
 
-    if (usePrecomputedDistances) {
-        // always use int precomputedDistances
-        for (unsigned int i = sortStart; i < renderCount; i++) {
-            int distance = precomputedDistances[indexes[i]];
-            mappedDistances[i] = distance;
-            if (distance > maxDistance) maxDistance = distance;
-            if (distance < minDistance) minDistance = distance;
-        }
-    } else if (gsType == 1) {   // ThreeD
+    if (gsType == 1) {   // ThreeD
         // always use int centers in this case
         int *iCenters = (int*)centers;
         int iMVPRow3[4] = {(int)(modelViewProj[2] * 1000.0), (int)(modelViewProj[6] * 1000.0), (int)(modelViewProj[10] * 1000.0), 1};
 #ifdef __wasm_simd128__
         int tempOut[4];
         v128_t b = wasm_v128_load(&iMVPRow3[0]);
-        for (unsigned int i = sortStart; i < renderCount; i++) {
+        for (unsigned int i = sortStart; i < sortCount; i++) {
             v128_t a = wasm_v128_load(&iCenters[4 * indexes[i]]);
             v128_t prod = wasm_i32x4_mul(a, b);
             wasm_v128_store(&tempOut[0], prod);
@@ -53,7 +45,7 @@ EXTERN EMSCRIPTEN_KEEPALIVE void sortIndexes(unsigned int* indexes, void* center
             if (distance < minDistance) minDistance = distance;
         }
 #else
-        for (unsigned int i = sortStart; i < renderCount; i++) {
+        for (unsigned int i = sortStart; i < sortCount; i++) {
             unsigned int indexOffset = 4 * (unsigned int)indexes[i];
             int distance =
                 (int)((iMVPRow3[0] * iCenters[indexOffset] +
@@ -74,7 +66,7 @@ EXTERN EMSCRIPTEN_KEEPALIVE void sortIndexes(unsigned int* indexes, void* center
         float tempOut[4];
         v128_t deltaTPowSIMD;
         v128_t mvpSIMD = wasm_v128_load(fMVPRow3);
-        for (unsigned int i = sortStart; i < renderCount; i++) {
+        for (unsigned int i = sortStart; i < sortCount; i++) {
             unsigned int indexOffset = 13 * (unsigned int)indexes[i];
 
             deltaTPow[1] = timestamp - fCenters[indexOffset + 12];
@@ -108,7 +100,7 @@ EXTERN EMSCRIPTEN_KEEPALIVE void sortIndexes(unsigned int* indexes, void* center
         }
 #else
         float deltaTPow, deltaT;
-        for (unsigned int i = sortStart; i < renderCount; i++) {
+        for (unsigned int i = sortStart; i < sortCount; i++) {
             unsigned int indexOffset = 13 * (unsigned int)indexes[i];
             deltaTPow = 1.0f;
             deltaT = timestamp - fCenters[indexOffset + 12];
@@ -130,7 +122,7 @@ EXTERN EMSCRIPTEN_KEEPALIVE void sortIndexes(unsigned int* indexes, void* center
     float distancesRange = (float)maxDistance - (float)minDistance;
     float rangeMap = (float)(distanceMapRange - 1) / distancesRange;
 
-    for (unsigned int i = sortStart; i < renderCount; i++) {
+    for (unsigned int i = sortStart; i < sortCount; i++) {
         unsigned int frequenciesIndex = (int)((float)(mappedDistances[i] - minDistance) * rangeMap);
         mappedDistances[i] = frequenciesIndex;
         frequencies[frequenciesIndex] = frequencies[frequenciesIndex] + 1;   
@@ -147,10 +139,10 @@ EXTERN EMSCRIPTEN_KEEPALIVE void sortIndexes(unsigned int* indexes, void* center
         indexesOut[i] = indexes[i];
     }
 
-    for (int i = (int)renderCount - 1; i >= (int)sortStart; i--) {
+    for (int i = (int)sortCount - 1; i >= (int)sortStart; i--) {
         unsigned int frequenciesIndex = mappedDistances[i];
         unsigned int freq = frequencies[frequenciesIndex];
-        indexesOut[renderCount - freq] = indexes[i];
+        indexesOut[sortCount - freq] = indexes[i];
         frequencies[frequenciesIndex] = freq - 1;
     }
 }

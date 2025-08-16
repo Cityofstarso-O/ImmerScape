@@ -358,8 +358,52 @@ export class GSKernel_3DGS {
         `;
     }
 
-    static getFetchFunc(buffers) {
+    static getFetchFunc(buffers, chunkBased) {
         let res = ``;
+
+        if (chunkBased) {
+            res += `
+                void splatIndex2RangeUV(in uint splatIndex, inout ivec2 rangeUV, inout ivec2 uv) {
+                    ivec2 texSize = textureSize(u_xyz, 0);
+
+                    int chunkWidth = texSize.x >> 4;;
+                    int current = int(splatIndex) >> 4;
+                    rangeUV.x = current % chunkWidth;
+                    rangeUV.y = (current / chunkWidth) >> 4;
+
+                    uv = index2uv(splatIndex, 1u, 0u, texSize);
+                }
+
+                mat3 fetchVrk(in vec3 s, in vec4 q)
+                {
+                    q = normalize(q);
+
+                    float xx = q.x * q.x;
+                    float yy = q.y * q.y;
+                    float zz = q.z * q.z;
+                    float xy = q.x * q.y;
+                    float xz = q.x * q.z;
+                    float yz = q.y * q.z;
+                    float wx = q.w * q.x;
+                    float wy = q.w * q.y;
+                    float wz = q.w * q.z;
+                    mat3 rot = mat3(
+                        1.0 - 2.0 * (yy + zz), 2.0 * (xy + wz), 2.0 * (xz - wy),
+                        2.0 * (xy - wz), 1.0 - 2.0 * (xx + zz), 2.0 * (yz + wx),
+                        2.0 * (xz + wy), 2.0 * (yz - wx), 1.0 - 2.0 * (xx + yy)
+                    );
+
+                    mat3 ss = mat3(
+                        s.x * s.x, 0.0, 0.0,
+                        0.0, s.y * s.y, 0.0,
+                        0.0, 0.0, s.z * s.z
+                    );
+                    return rot * ss * transpose(rot);
+                }
+            `
+            return res;
+        }
+
         const pospad = buffers.pospad;
         if (pospad) {
             res += `
@@ -420,8 +464,39 @@ export class GSKernel_3DGS {
         return res;
     }
 
-    static getFetchParams(buffers) {
-        let res = `
+    static getFetchParams(chunkBased) {
+        let res = ``;
+        if (chunkBased) {
+            res += `{
+                ivec2 rangeUV, uv;
+                splatIndex2RangeUV(splatIndex, rangeUV, uv);
+
+                uvec4 range = texelFetch(u_range, rangeUV, 0);
+                vec2 xmin_ymin = unpackHalf2x16(range.x);
+                vec2 zmin_xmax = unpackHalf2x16(range.y);
+                vec2 ymax_zmax = unpackHalf2x16(range.z);
+                vec2 smin_smax = unpackHalf2x16(range.w);
+
+                uint x11y10z11 = texelFetch(u_xyz, uv, 0).r;
+                const float inv1023 = 0.0009775171;
+                const float inv2047 = 0.0004885198;
+                splatCenter.x = (float((x11y10z11 >> 0) & 0x7FFu) * inv2047) * (zmin_xmax.y - xmin_ymin.x) + xmin_ymin.x;
+                splatCenter.y = (float((x11y10z11 >>11) & 0x3FFu) * inv1023) * (ymax_zmax.x - xmin_ymin.y) + xmin_ymin.y;
+                splatCenter.z = (float((x11y10z11 >>21) & 0x7FFu) * inv2047) * (ymax_zmax.y - zmin_xmax.x) + zmin_xmax.x;
+
+                vec3 s = texelFetch(u_s, uv, 0).rgb;
+                s = s * (smin_smax.y - smin_smax.x) + smin_smax.x;
+                s *= s;
+                vec4 q = texelFetch(u_q, uv, 0);
+                q = q * 2.0 - 1.0;
+                Vrk = fetchVrk(s, q);
+
+                splatColor = texelFetch(u_color, uv, 0);
+            }`;
+            return res;
+        }
+
+        res = `
             fetchCenter(splatIndex, splatCenter);
             fetchCovCol(splatIndex, Vrk, splatColor);
         `

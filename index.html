@@ -590,7 +590,7 @@
                 console.log(document.getElementById('drop-zone'))
                 viewer = new ImmerScapeViewer();
                 viewer.run();
-                viewer.fetchSceneWithURL("/scenes/chair.ply");
+                viewer.fetchSceneWithURL("/test/chair.glb");
                 viewer.addExternalListener((msg) => {
                     if (msg.sceneLoaded) {
                         const exists = sceneList.value.some(scene => scene.uid === msg.uid);
