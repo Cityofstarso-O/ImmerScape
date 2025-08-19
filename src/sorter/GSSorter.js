@@ -11,6 +11,12 @@ export class GSSorter {
         this.sortRunning = false;
         this.chunkBased = false;
 
+        this.splatSortCount = 0;
+        this.splatCount = 0;
+
+        this.lastSortTime = 0;
+        this.lastCullTime = 0;
+
         this.sortWorkerSortedIndexes = null;
 
         this.eventBus = eventBus;
@@ -21,21 +27,32 @@ export class GSSorter {
         return this.lastSortTime;
     }
 
+    getLastCullTime() {
+        return this.lastCullTime;
+    }
+
+    getSplatSortCount() {
+        return this.splatSortCount;
+    }
+
     async onBuffersReady({ data, sceneName }) {
         this.ready = false;
         this.chunkBased = Boolean(data.chunkBased);
-        const splatCount = data.num;
-        this.initSorter(splatCount);
+        this.splatCount = data.num;
+        this.initSorter(this.splatCount);
 
         this.worker.postMessage({
             'init': {
                 'sorterWasmUrl': this.sourceWasm,
-                'splatCount': splatCount,
+                'splatCount': this.splatCount,
                 'useSharedMemory': this.sharedMemoryForWorkers,
                 'distanceMapRange': 1 << 16,
                 'centers': data.sortBuffer,
                 'gsType': GSType[data.gsType],
                 'chunkBased': this.chunkBased,
+                'chunks': data.chunkBuffer,
+                'chunkNum': data.chunkNum,
+                'chunkResolution': this.chunkBased ? data.chunkResolution : null,
             }
         }/*, [data.sortBuffer]*/);
     }
@@ -72,12 +89,17 @@ export class GSSorter {
                 } else {
                     this.sortWorkerSortedIndexes = e.data.sortedIndexes;
 
-                    const sortedIndexes = new Uint32Array(e.data.sortedIndexes.buffer, 0, e.data.splatSortCount);
-                    console.log(e.data.sortTime);
+                    const sortedIndexes = this.sortWorkerSortedIndexes.slice(0, e.data.splatSortCount);
                     this.eventBus.emit('sortDone', sortedIndexes);
                 }
+                this.splatSortCount = e.data.splatSortCount;
                 this.lastSortTime = e.data.sortTime;
+                this.lastCullTime = e.data.cullTime;
                 this.sortRunning = false;
+                console.log(`visible: ${this.splatSortCount}/${this.splatCount} (${(this.splatSortCount/this.splatCount*100).toFixed(2)}%)`,  
+                    `cullTime: ${this.lastCullTime.toFixed(2)}ms`,
+                    `sortTime: ${this.lastSortTime.toFixed(2)}ms`
+                );
             } else if (e.data.sortCanceled) {
                 this.sortRunning = false;
             } else if (e.data.sortSetupPhase1Complete) {

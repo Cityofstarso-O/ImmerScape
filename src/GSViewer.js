@@ -218,7 +218,7 @@ export default class GSViewer {
                     this.graphicsAPI.drawInstanced('TRIANGLE_FAN', 0, 4, this.gsScene.getSplatNum(), this.shaderManager.debugTF);
                     this.shaderManager.debugLog();
                 }
-                this.graphicsAPI.drawInstanced('TRIANGLE_FAN', 0, 4, this.gsScene.getSplatNum());
+                this.graphicsAPI.drawInstanced('TRIANGLE_FAN', 0, 4, this.sorter.getSplatSortCount());
             }
             // pass 1: ui
             this.sceneHelper.renderGizmo()
@@ -334,7 +334,7 @@ export default class GSViewer {
             if (!(force || sortOnceForNewScene)) {
                 let needsRefreshForRotation = false;
                 let needsRefreshForPosition = false;
-                if (angleDiff <= 0.99) needsRefreshForRotation = true;
+                if (angleDiff < 0.995) needsRefreshForRotation = true;
                 if (positionDiff >= 1.0) needsRefreshForPosition = true;
                 if (!needsRefreshForRotation && !needsRefreshForPosition) return Promise.resolve(false);
             }
