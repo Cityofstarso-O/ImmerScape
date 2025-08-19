@@ -83,6 +83,9 @@ self.onmessage = async (event) => {
                 const transferables = Object.values(results.data.buffers).map(value => value.buffer);
                 transferables.push(results.data.file.data);
                 transferables.push(results.data.sortBuffer);
+                if (results.data.chunkBased) {
+                    transferables.push(results.data.chunkBuffer);
+                }
                 self.postMessage({
                     'valid': results.valid,
                     'data': results.data,
