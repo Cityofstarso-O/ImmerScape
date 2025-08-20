@@ -128,6 +128,11 @@ export class ShaderManager {
                 'value': 0.0,
                 'type': '1f',
                 'update': true,
+            },
+            'renderMode': {
+                'value': 1,
+                'type': '1i',
+                'update': true,
             }
         };
         this.vbo = null;    // shared vertexBuffer
@@ -252,6 +257,7 @@ export class ShaderManager {
             uniform float sceneScale;
             uniform float frustumDilation;
             uniform float alphaCullThreshold;
+            uniform int renderMode;
         `;
         vs += gsKernel.getUniformDefines();
 
@@ -321,7 +327,9 @@ export class ShaderManager {
                     return;
                 }
 
-                // eigenValue1 = eigenValue2 = 0.2; // point cloud
+                if (renderMode == 2) {
+                    eigenValue1 = eigenValue2 = 0.4; // point cloud
+                }
 
                 vec2 eigenVector1 = normalize(vec2(b, eigenValue1 - a));
                 vec2 eigenVector2 = vec2(eigenVector1.y, -eigenVector1.x);

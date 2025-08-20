@@ -8,6 +8,7 @@ import { Utils } from "./Utils.js";
 import { OrbitControls } from './controls/OrbitControls.js';
 import { PointerLockControls } from './controls/PointerLockCotrols.js';
 import { SceneHelper } from './SceneHelper/sceneHelper.js';
+import { RenderMode } from "./Global.js";
 import * as THREE from "three"
 
 
@@ -42,6 +43,7 @@ export default class GSViewer {
         this.cameraUp = this.options.cameraUp;
         this.initialCameraLookAt = this.options.initialCameraLookAt;
         this.cameraFOV = this.options.cameraFOV;
+        this.backgroundColor = [0.15, 0.15, 0.15];
 
         // mobile: only support orbitControls
         // pc: support orbit and pointerLock without lock(useAsFlyControls = true)
@@ -56,11 +58,13 @@ export default class GSViewer {
         this.isSDown = false;
         this.isADown = false;
         this.isDDown = false;
+        this.isYDown = false;   // freeze Y
+        this.isQDown = false;   // camera rotation
+        this.isEDown = false;   // camera rotation
+        this.freezeY = false;
         this.velocity = new THREE.Vector3();
         this.direction = new THREE.Vector3();
         this.isLeftMouseDown = false;
-
-        this.splatSortCount = 0;
 
         this.startTime = performance.now();
         this.elapsedTime = 0;
@@ -70,6 +74,10 @@ export default class GSViewer {
         this.fps = 30;
         this.lastFrameTime = 0;
         this.deltaT = 0;
+
+        this.renderMode = RenderMode.splat;
+        this.showGrid = true;
+        this.showGizmo = true;
 
         this.gsloader = new GSLoader(this.eventBus);
         this.gsScene = new GSScene(this.options, this.eventBus, this.graphicsAPI);
@@ -126,6 +134,21 @@ export default class GSViewer {
         }
     }
 
+    setRenderMode(mode) {
+        const value = RenderMode[mode];
+        if (value && value > 0) {
+            this.renderMode = value;
+        }
+    }
+
+    setGridVisibility(visible) {
+        this.showGrid = visible;
+    }
+
+    setGizmoVisibility(visible) {
+        this.showGizmo = visible;
+    }
+
     lockPointer() {
         if (this.options.enablePointerLock && !this.useAsFlyControls) {
             this.pointerLockControls.lock();
@@ -146,6 +169,16 @@ export default class GSViewer {
 
     getLastSortTime() {
         return this.sorter.getLastSortTime();
+    }
+
+    getLastCullTime() {
+        return this.sorter.getLastCullTime();
+    }
+
+    getCullingPercentage() {    // which means visible splats number
+        // trick: for static 3dgs scene, force to sort once per sec
+        // this.__runSplatSort(true);
+        return this.sorter.getSplatSortCount() / this.gsScene.getSplatNum();
     }
 
     getResolution() {
@@ -181,8 +214,62 @@ export default class GSViewer {
         this.gsScene.applyTransform();
     }
 
+    resetTransform() {
+        this.gsScene.resetTransform();
+    }
+
     updateTransform() {
         this.gsScene.updateTransform();
+        // force to sort for new transformed scene
+        this.__runSplatSort(false, true);
+    }
+
+    setBackgroundColor(r, g, b) {
+        this.backgroundColor = [r, g, b];
+    }
+
+    updateCamera = function() {
+        const target = new THREE.Vector3();
+
+        return function(cameraSettings) {
+            if (this.devicePixelRatio != cameraSettings.dpr) {
+                this.devicePixelRatio = cameraSettings.dpr;
+            }
+            const rgb = Utils.hex2rgb(cameraSettings.backgroundColor);
+            if (Utils.valueChanged(this.backgroundColor, rgb)) {
+                this.setBackgroundColor(rgb[0], rgb[1], rgb[2]);
+            }
+            this.camera.fov = cameraSettings.fov;
+            this.camera.near = cameraSettings.clip.n;
+            this.camera.far = cameraSettings.clip.f;
+            this.camera.updateProjectionMatrix();
+            if (this.controls.type === 'orbit') {
+                this.camera.up.x = cameraSettings.up.x;
+                this.camera.up.y = cameraSettings.up.y;
+                this.camera.up.z = cameraSettings.up.z;
+                this.camera.position.x = cameraSettings.pos.x;
+                this.camera.position.y = cameraSettings.pos.y;
+                this.camera.position.z = cameraSettings.pos.z;
+                this.controls.target.x = cameraSettings.look.x;
+                this.controls.target.y = cameraSettings.look.y;
+                this.controls.target.z = cameraSettings.look.z;
+            } else {
+                this.camera.up.x = cameraSettings.up.x;
+                this.camera.up.y = cameraSettings.up.y;
+                this.camera.up.z = cameraSettings.up.z;
+                this.camera.position.x = cameraSettings.pos.x;
+                this.camera.position.y = cameraSettings.pos.y;
+                this.camera.position.z = cameraSettings.pos.z;
+                target.set(cameraSettings.look.x, cameraSettings.look.y, cameraSettings.look.z).add(this.camera.position);
+                this.camera.lookAt(target);
+            }
+        }
+    }();
+
+    resetCamera() {
+        this.camera.position.copy(this.initialCameraPosition);
+        this.camera.up.copy(this.cameraUp).normalize();
+        this.camera.lookAt(this.initialCameraLookAt);
     }
 
     run() {
@@ -206,9 +293,11 @@ export default class GSViewer {
             this.__updateForRendererSizeChanges();
             this.sceneHelper.update(currentTime, this.deltaT);
 
-            this.graphicsAPI.updateClearColor(0.15, 0.15, 0.15, 1);
+            this.graphicsAPI.updateClearColor(this.backgroundColor[0], this.backgroundColor[1], this.backgroundColor[2], 1);
             this.graphicsAPI.updateViewport();
-            this.sceneHelper.renderGrid();
+            if (this.showGrid) {
+                this.sceneHelper.renderGrid();
+            }
             if (this.__shouldRender()) {
                 // pass 0: gaussian splatting
                 this.shaderManager.setPipeline();
@@ -220,8 +309,9 @@ export default class GSViewer {
                 }
                 this.graphicsAPI.drawInstanced('TRIANGLE_FAN', 0, 4, this.sorter.getSplatSortCount());
             }
-            // pass 1: ui
-            this.sceneHelper.renderGizmo()
+            if (this.showGizmo) {
+                this.sceneHelper.renderGizmo();
+            }
         }
 
         animate(performance.now());
@@ -284,7 +374,7 @@ export default class GSViewer {
 
         return function() {
             if (this.options.enablePointerLock && this.controls === this.pointerLockControls) {
-                this.camera.updateMatrixWorld();
+                //this.camera.updateMatrixWorld();
             }
             const projMat = this.camera.projectionMatrix.elements;
             newViewMatrix.copy(this.gsScene.getCurrentScene('modelMatrix'));
@@ -299,6 +389,7 @@ export default class GSViewer {
             this.shaderManager.updateUniform('invViewport', [1 / this.canvas.width, 1 / this.canvas.height], true);
             this.shaderManager.updateUniform('timestamp', this.loopedTime);
             this.shaderManager.updateUniform('sceneScale', this.gsScene.getCurrentScene('sceneScale'));
+            this.shaderManager.updateUniform('renderMode', this.renderMode);
 
             this.shaderManager.updateUniforms();
         }
@@ -322,14 +413,21 @@ export default class GSViewer {
             if (this.sorter.sortRunning) return Promise.resolve(true);
             // we sort all splats
             // culling on wasm if chunkBased, or we just sort all splats
-            this.splatSortCount = this.gsScene.getSplatNum();
-            if (this.splatSortCount <= 0) {
+            if (this.gsScene.getSplatNum() <= 0) {
                 return Promise.resolve(false);
             }
 
-            sortViewDir.set(0, 0, -1).applyQuaternion(this.camera.quaternion);
+            this.camera.getWorldDirection(sortViewDir);
             const angleDiff = sortViewDir.dot(lastSortViewDir);
             const positionDiff = sortViewOffset.copy(this.camera.position).sub(lastSortViewPos).length();
+            if (angleDiff < 0.995 || positionDiff >= 0.5) {
+                this.eventBus.emit('noteExternalListener', {
+                    cameraUpdate: true,
+                    position: this.camera.position,
+                    look: this.controls.type === 'orbit' ? this.controls.target : sortViewDir,
+                    up: this.camera.up,
+                });
+            }
 
             if (!(force || sortOnceForNewScene)) {
                 let needsRefreshForRotation = false;
@@ -351,7 +449,7 @@ export default class GSViewer {
             cameraPositionArray[1] = this.camera.position.y;
             cameraPositionArray[2] = this.camera.position.z;
 
-            this.sorter.sort(mvpMatrix, cameraPositionArray, this.splatSortCount, this.loopedTime);
+            this.sorter.sort(mvpMatrix, cameraPositionArray, this.loopedTime);
 
             lastSortViewPos.copy(this.camera.position);
             lastSortViewDir.copy(sortViewDir);
@@ -392,12 +490,17 @@ export default class GSViewer {
     }
 
     __onKeyDown(event) {
+        switch (event.code) {
+            case 'KeyQ': this.isQDown = true; break;
+            case 'KeyE': this.isEDown = true; break;
+        }
         if (this.controls !== this.pointerLockControls) return;
         switch (event.code) {
             case 'KeyW': this.isWDown = true; break;
             case 'KeyA': this.isADown = true; break;
             case 'KeyS': this.isSDown = true; break;
             case 'KeyD': this.isDDown = true; break;
+            case 'KeyY': this.isYDown = true; break;
         }
     }
 
@@ -407,6 +510,9 @@ export default class GSViewer {
             case 'KeyA': this.isADown = false; break;
             case 'KeyS': this.isSDown = false; break;
             case 'KeyD': this.isDDown = false; break;
+            case 'KeyY': this.isYDown = false; this.freezeY = !this.freezeY; break;
+            case 'KeyQ': this.isQDown = false; break;
+            case 'KeyE': this.isEDown = false; break;
         }
     }
 
@@ -417,6 +523,9 @@ export default class GSViewer {
             if (this.pointerLockControls) {
                 this.pointerLockControls.isLeftMouseDown = this.isLeftMouseDown;
             }
+            this.eventBus.emit('noteExternalListener', {
+                startDrag: true,
+            });
         }
     }
 
@@ -428,6 +537,9 @@ export default class GSViewer {
                 this.pointerLockControls.isLeftMouseDown = this.isLeftMouseDown;
             }
             this.sceneHelper._onMouseUp();
+            this.eventBus.emit('noteExternalListener', {
+                endDrag: true,
+            });
         }
     }
 
@@ -463,9 +575,9 @@ export default class GSViewer {
         }
         document.addEventListener('keydown', this.__onKeyDown.bind(this));
         document.addEventListener('keyup', this.__onKeyUp.bind(this));
-        document.addEventListener('mousedown', this.__onMouseDown.bind(this));
-        document.addEventListener('mouseup', this.__onMouseUp.bind(this));
-        document.addEventListener('mousemove', this.__onMouseMove.bind(this));
+        this.canvas.addEventListener('mousedown', this.__onMouseDown.bind(this));
+        this.canvas.addEventListener('mouseup', this.__onMouseUp.bind(this));
+        this.canvas.addEventListener('mousemove', this.__onMouseMove.bind(this));
         
         this.controls = this.orbitControls;
         this.controls.type = 'orbit';
@@ -485,14 +597,47 @@ export default class GSViewer {
         if (this.isWDown || this.isSDown) this.velocity.z -= this.direction.z * 100.0 * t;
         if (this.isADown || this.isDDown) this.velocity.x -= this.direction.x * 100.0 * t;
         this.pointerLockControls.moveRight(-this.velocity.x * t);
-        this.pointerLockControls.moveForward(-this.velocity.z * t);
+        this.pointerLockControls.moveForward(-this.velocity.z * t, this.freezeY);
     }
 
     __updateControls() {
+        this.__updateCameraRotate();
         if (this.controls == this.orbitControls) {
             this.controls.update();
         } else if (this.controls == this.pointerLockControls && (this.useAsFlyControls || (!this.useAsFlyControls && this.controls.isLocked))) {
             this.__updatePointerLockMovement();
         }
     }
+
+    __updateCameraRotate = function() {
+        const forwardVector = new THREE.Vector3();
+        const target = new THREE.Vector3(); 
+        const rollSpeed = 0.001;
+
+        return function() {
+            this.camera.getWorldDirection(forwardVector);
+            let update = false;
+            if (this.isQDown) {
+                this.camera.up.applyAxisAngle(forwardVector, rollSpeed * this.deltaT);
+                update = true;
+            }
+            if (this.isEDown) {
+                this.camera.up.applyAxisAngle(forwardVector, -rollSpeed * this.deltaT);
+                update = true;
+            }
+
+            if (update) {
+                if (this.controls === this.pointerLockControls) {
+                    target.copy(this.camera.position).add(forwardVector);
+                    this.camera.lookAt(target);
+                }
+                this.eventBus.emit('noteExternalListener', {
+                    cameraUpdate: true,
+                    position: this.camera.position,
+                    look: this.controls.type === 'orbit' ? this.controls.target : forwardVector,
+                    up: this.camera.up,
+                })
+            }
+        }
+    }();
 }
