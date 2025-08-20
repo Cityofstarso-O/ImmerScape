@@ -102,6 +102,24 @@ export class GSScene {
         transform.scale.z = 1;
     }
 
+    resetTransform() {
+        this.scenes[this.currentUID].appliedTransform.fromArray(this.scenes[this.currentUID].file.json.nodes[0].matrix);
+        this.scenes[this.currentUID].appliedScale = this.scenes[this.currentUID].file.json.nodes[0].extras.appliedScale;
+        this.scenes[this.currentUID].modelMatrix.copy(this.scenes[this.currentUID].appliedTransform);
+        this.scenes[this.currentUID].sceneScale = this.scenes[this.currentUID].appliedScale;
+
+        const transform = this.scenes[this.currentUID].transform;
+        transform.position.x = 0;
+        transform.position.y = 0;
+        transform.position.z = 0;
+        transform.rotation.x = 0;
+        transform.rotation.y = 0;
+        transform.rotation.z = 0;
+        transform.scale.x = 1;
+        transform.scale.y = 1;
+        transform.scale.z = 1;
+    }
+
     forceSort() {
         if (this.ready && this.currentUID) {
             return this.scenes[this.currentUID].gsType === 'SPACETIME';

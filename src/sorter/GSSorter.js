@@ -57,11 +57,10 @@ export class GSSorter {
         }/*, [data.sortBuffer]*/);
     }
 
-    sort(mvpMatrix, cameraPositionArray, splatSortCount, timestamp) {
+    sort(mvpMatrix, cameraPositionArray, timestamp) {
         const sortMessage = {
             'modelViewProj': mvpMatrix.elements,
             'cameraPosition': cameraPositionArray,
-            'splatSortCount': splatSortCount,
             'timestamp': timestamp,
         };
         // NOTE: when rendering 4dgs, we should always sort for current timestamp.

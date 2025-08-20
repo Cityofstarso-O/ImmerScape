@@ -32,6 +32,12 @@ export const GraphicsApiType = {
     'WEBGPU': 2,
 };
 
+export const RenderMode = {
+    'none': 0,
+    'splat': 1,
+    'point': 2,
+}
+
 // should not be used in worker
 export class GlobalVars {
     static graphicsAPI = GraphicsApiType.NONE;

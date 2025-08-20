@@ -204,7 +204,7 @@ function buildBVH(aabbData) {
         });
     }
 
-    const MAX_PRIMITIVES_IN_NODE = 4;
+    const MAX_PRIMITIVES_IN_NODE = 1;
 
     // 2. 递归构建函数 (核心变化)
     // 这个函数现在直接返回一个节点对象

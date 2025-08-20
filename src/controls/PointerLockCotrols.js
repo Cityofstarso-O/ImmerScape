@@ -165,7 +165,7 @@ class PointerLockControls extends THREE.Controls {
 	 *
 	 * @param {number} distance - The signed distance.
 	 */
-	moveForward( distance ) {
+	moveForward( distance, freezeY ) {
 
 		if ( this.enabled === false ) return;
 
@@ -174,9 +174,12 @@ class PointerLockControls extends THREE.Controls {
 
 		const camera = this.object;
 
-		_vector.setFromMatrixColumn( camera.matrix, 0 );
-
-		_vector.crossVectors( camera.up, _vector );
+		if (freezeY) {
+			_vector.setFromMatrixColumn( camera.matrix, 0 );
+			_vector.crossVectors( camera.up, _vector );
+		} else {
+			this.getDirection(_vector);
+		}
 
 		camera.position.addScaledVector( _vector, distance );
 
