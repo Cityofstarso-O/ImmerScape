@@ -10,6 +10,7 @@ import { PointerLockControls } from './controls/PointerLockCotrols.js';
 import { SceneHelper } from './SceneHelper/sceneHelper.js';
 import { RenderMode } from "./Global.js";
 import * as THREE from "three"
+import { XRManager } from "./WebXR/XRManager.js";
 
 
 export default class GSViewer {
@@ -61,6 +62,8 @@ export default class GSViewer {
         this.isYDown = false;   // freeze Y
         this.isQDown = false;   // camera rotation
         this.isEDown = false;   // camera rotation
+        this.isSpaceDown = false;
+        this.isLeftCtrlDown = false;
         this.freezeY = false;
         this.velocity = new THREE.Vector3();
         this.direction = new THREE.Vector3();
@@ -84,6 +87,12 @@ export default class GSViewer {
         this.shaderManager = new ShaderManager(this.options, this.eventBus, this.graphicsAPI);
         this.sorter = new GSSorter(this.options, this.eventBus);
         this.sceneHelper = new SceneHelper(this.canvas, this.graphicsAPI);
+
+        this.webxr = new XRManager(this.eventBus, this.canvas, this.graphicsAPI);
+        this.normalRenderLoopHandle = null;
+        this.xrRenderLoopHandle = null;
+        this.cyclopeanCamera = new THREE.PerspectiveCamera();
+        this.eventBus.on('xrSessionEnd', this.__onXrSessionEnd.bind(this));
 
         this.eventBus.on('buffersReady', this.__onBuffersReady.bind(this));
         this.__setupCamera();
@@ -132,6 +141,25 @@ export default class GSViewer {
                 return false;
             }
         }
+    }
+
+    async switchToXR(sessionType) {
+        if (this.normalRenderLoopHandle) {
+            cancelAnimationFrame(this.normalRenderLoopHandle);
+            this.normalRenderLoopHandle = null;
+        }
+        const result = await this.webxr.initSession(sessionType);
+        if (!result) {
+            this.run();
+            return false;
+        }
+        this.controls.enabled = false;
+        this.runXR();
+        return true;
+    }
+
+    recheckXR() {
+        this.webxr.checkEnv();
     }
 
     setRenderMode(mode) {
@@ -228,13 +256,17 @@ export default class GSViewer {
         this.backgroundColor = [r, g, b];
     }
 
+    setDPR(dpr) {
+        if (this.devicePixelRatio != dpr) {
+            this.devicePixelRatio = Math.floor(dpr*100)/100;
+        }
+    }
+
     updateCamera = function() {
         const target = new THREE.Vector3();
 
         return function(cameraSettings) {
-            if (this.devicePixelRatio != cameraSettings.dpr) {
-                this.devicePixelRatio = cameraSettings.dpr;
-            }
+            this.setDPR(cameraSettings.dpr);
             const rgb = Utils.hex2rgb(cameraSettings.backgroundColor);
             if (Utils.valueChanged(this.backgroundColor, rgb)) {
                 this.setBackgroundColor(rgb[0], rgb[1], rgb[2]);
@@ -275,19 +307,9 @@ export default class GSViewer {
     run() {
 
         const animate = (currentTime) => {
-            requestAnimationFrame(animate);
+            this.normalRenderLoopHandle = requestAnimationFrame(animate);
 
-            this.frameCount++;
-            if (currentTime - this.lastFPSTime >= 1000) {
-                this.fps = this.frameCount;
-                this.frameCount = 0;
-                this.lastFPSTime = currentTime;
-            }
-            this.elapsedTime = currentTime - this.startTime;
-            this.loopedTime = (this.elapsedTime % 1000) / 1000;
-            this.deltaT = currentTime - this.lastFrameTime;
-            this.lastFrameTime = currentTime;
-
+            this.__updateFPS(currentTime);
             this.__updateControls();
             this.__runSplatSort(this.gsScene.forceSort());
             this.__updateForRendererSizeChanges();
@@ -317,6 +339,36 @@ export default class GSViewer {
         animate(performance.now());
     }
 
+    runXR() {
+
+        const animateXR = (currentTime, xrFrame) => {
+            this.xrRenderLoopHandle = this.webxr.session.requestAnimationFrame(animateXR);
+
+            const pose = xrFrame.getViewerPose(this.webxr.refSpace);
+            if (!pose) return;
+
+            this.__updateFPS(currentTime);
+            this.__updateCyclopeanCamera(pose);
+            this.__runSplatSort(this.gsScene.forceSort(), false, true);
+            this.__updateForRendererSizeChanges();
+
+            if (this.__shouldRender()) {
+                this.graphicsAPI.bindFrameBuffer(this.webxr.framebuffer);
+                this.graphicsAPI.updateClearColor(0, 0, 0, 1, !this.webxr.isAR(), true);  // always use black
+                for (const view of pose.views) {
+                    const viewport = this.webxr.baseLayer.getViewport(view);
+                    this.graphicsAPI.updateViewport({x:viewport.x, y:viewport.y}, {x:viewport.width, y:viewport.height});
+                    this.shaderManager.setPipeline();
+                    this.__updateUniforms(Array.from(view.projectionMatrix), Array.from(view.transform.inverse.matrix), viewport);
+                    this.graphicsAPI.drawInstanced('TRIANGLE_FAN', 0, 4, this.sorter.getSplatSortCount());
+                }
+            }
+        }
+
+        this.webxr.frameRateControl(0, true);
+        this.xrRenderLoopHandle = this.webxr.session.requestAnimationFrame(animateXR);
+    }
+
     __shouldRender = function() {
         let isSet = false;
         return function(reset = false) {
@@ -340,6 +392,10 @@ export default class GSViewer {
                 })
             }
 
+            if (this.webxr.running) {
+                this.webxr.frameRateControl(this.fps);
+            }
+
             return res;
         }
     }();
@@ -347,6 +403,15 @@ export default class GSViewer {
     __onBuffersReady({ data, sceneName }) {
         this.__shouldRender(true);
         this.__runSplatSort(false, true);
+    }
+
+    __onXrSessionEnd({}) {
+        this.graphicsAPI.bindFrameBuffer(null);
+        this.xrRenderLoopHandle = null;
+        this.controls.enabled = true;
+        this.__shouldRender(true);
+        this.__runSplatSort(false, true);
+        this.run();
     }
 
     __updateForRendererSizeChanges = function() {
@@ -371,25 +436,27 @@ export default class GSViewer {
 
     __updateUniforms = function() {
         const newViewMatrix = new THREE.Matrix4();
+        const xrViewMatrix = new THREE.Matrix4();
 
-        return function() {
+        return function(proj = null, view = null, viewport = null) {
             if (this.options.enablePointerLock && this.controls === this.pointerLockControls) {
                 //this.camera.updateMatrixWorld();
             }
-            const projMat = this.camera.projectionMatrix.elements;
+            const projMat = proj || this.camera.projectionMatrix.elements;
             newViewMatrix.copy(this.gsScene.getCurrentScene('modelMatrix'));
-            newViewMatrix.premultiply(this.camera.matrixWorldInverse);
+            newViewMatrix.premultiply(Boolean(view) ? xrViewMatrix.fromArray(view) : this.camera.matrixWorldInverse);
 
             this.shaderManager.updateUniform('viewMatrix', newViewMatrix.elements);
             this.shaderManager.updateUniform('projectionMatrix', projMat);
-            this.shaderManager.updateUniform('cameraPosition', this.camera.position.toArray(), true);
-            const focalX = projMat[0] * 0.5 * this.canvas.width;
-            const focalY = projMat[5] * 0.5 * this.canvas.height;
+            // this.shaderManager.updateUniform('cameraPosition', this.camera.position.toArray(), true);
+            const viewportSize = viewport || { width: this.canvas.width, height: this.canvas.height };
+            const focalX = projMat[0] * 0.5 * viewportSize.width;
+            const focalY = projMat[5] * 0.5 * viewportSize.height;
             this.shaderManager.updateUniform('focal', [focalX, focalY], true);
-            this.shaderManager.updateUniform('invViewport', [1 / this.canvas.width, 1 / this.canvas.height], true);
+            this.shaderManager.updateUniform('invViewport', [1 / viewportSize.width, 1 / viewportSize.height], true);
             this.shaderManager.updateUniform('timestamp', this.loopedTime);
-            this.shaderManager.updateUniform('sceneScale', this.gsScene.getCurrentScene('sceneScale'));
-            this.shaderManager.updateUniform('renderMode', this.renderMode);
+            this.shaderManager.updateUniform('sceneScale', this.gsScene.getCurrentScene('sceneScale'), true);
+            this.shaderManager.updateUniform('renderMode', this.renderMode, true);
 
             this.shaderManager.updateUniforms();
         }
@@ -404,7 +471,7 @@ export default class GSViewer {
         const lastSortViewPos = new THREE.Vector3();
         const sortViewOffset = new THREE.Vector3();
 
-        return function(force = false, reset = false) {
+        return function(force = false, reset = false, useCyclopeanCamera = false) {
             if (reset) {
                 sortOnceForNewScene = true;
                 return Promise.resolve(false);
@@ -416,16 +483,17 @@ export default class GSViewer {
             if (this.gsScene.getSplatNum() <= 0) {
                 return Promise.resolve(false);
             }
+            const camera = useCyclopeanCamera ? this.cyclopeanCamera : this.camera;
 
-            this.camera.getWorldDirection(sortViewDir);
+            sortViewDir.set(0, 0, -1).applyQuaternion(camera.quaternion);
             const angleDiff = sortViewDir.dot(lastSortViewDir);
-            const positionDiff = sortViewOffset.copy(this.camera.position).sub(lastSortViewPos).length();
-            if (angleDiff < 0.995 || positionDiff >= 0.5) {
+            const positionDiff = sortViewOffset.copy(camera.position).sub(lastSortViewPos).length();
+            if ((angleDiff < 0.995 || positionDiff >= 0.5) && !useCyclopeanCamera) {
                 this.eventBus.emit('noteExternalListener', {
                     cameraUpdate: true,
-                    position: this.camera.position,
+                    position: camera.position,
                     look: this.controls.type === 'orbit' ? this.controls.target : sortViewDir,
-                    up: this.camera.up,
+                    up: camera.up,
                 });
             }
 
@@ -442,16 +510,16 @@ export default class GSViewer {
             this.sorter.sortRunning = true;
 
             mvpMatrix.copy(this.gsScene.getCurrentScene('modelMatrix'));
-            mvpMatrix.premultiply(this.camera.matrixWorldInverse);
-            mvpMatrix.premultiply(this.camera.projectionMatrix);
+            mvpMatrix.premultiply(camera.matrixWorldInverse);
+            mvpMatrix.premultiply(camera.projectionMatrix);
 
-            cameraPositionArray[0] = this.camera.position.x;
-            cameraPositionArray[1] = this.camera.position.y;
-            cameraPositionArray[2] = this.camera.position.z;
+            cameraPositionArray[0] = camera.position.x;
+            cameraPositionArray[1] = camera.position.y;
+            cameraPositionArray[2] = camera.position.z;
 
             this.sorter.sort(mvpMatrix, cameraPositionArray, this.loopedTime);
 
-            lastSortViewPos.copy(this.camera.position);
+            lastSortViewPos.copy(camera.position);
             lastSortViewDir.copy(sortViewDir);
         };
 
@@ -501,6 +569,8 @@ export default class GSViewer {
             case 'KeyS': this.isSDown = true; break;
             case 'KeyD': this.isDDown = true; break;
             case 'KeyY': this.isYDown = true; break;
+            case 'Space': this.isSpaceDown = true; break;
+            case 'ControlLeft': this.isLeftCtrlDown = true; break;
         }
     }
 
@@ -513,6 +583,8 @@ export default class GSViewer {
             case 'KeyY': this.isYDown = false; this.freezeY = !this.freezeY; break;
             case 'KeyQ': this.isQDown = false; break;
             case 'KeyE': this.isEDown = false; break;
+            case 'Space': this.isSpaceDown = false; break;
+            case 'ControlLeft': this.isLeftCtrlDown = false; break;
         }
     }
 
@@ -572,6 +644,7 @@ export default class GSViewer {
                     document.getElementById('blocker').style.display = 'block';
                 });
             }
+            this.pointerLockControls.enabled = false;
         }
         document.addEventListener('keydown', this.__onKeyDown.bind(this));
         document.addEventListener('keyup', this.__onKeyUp.bind(this));
@@ -587,18 +660,115 @@ export default class GSViewer {
     }
 
     __updatePointerLockMovement() {
-        const t = this.deltaT / 1000;   // ms => s
+        const t = this.deltaT / 1000; // Convert delta time from ms to seconds
+
+        // Apply friction/decay to all three velocity components
         this.velocity.x -= this.velocity.x * 10.0 * t;
         this.velocity.z -= this.velocity.z * 10.0 * t;
+        this.velocity.y -= this.velocity.y * 10.0 * t; // Added for vertical movement
+
+        // --- Horizontal Movement (XZ Plane) ---
         this.direction.z = Number(this.isWDown) - Number(this.isSDown);
         this.direction.x = Number(this.isDDown) - Number(this.isADown);
-        this.direction.normalize();
+        this.direction.normalize(); // Ensure consistent speed in all horizontal directions
 
-        if (this.isWDown || this.isSDown) this.velocity.z -= this.direction.z * 100.0 * t;
-        if (this.isADown || this.isDDown) this.velocity.x -= this.direction.x * 100.0 * t;
+        if (this.isWDown || this.isSDown) {
+            this.velocity.z -= this.direction.z * 100.0 * t;
+        }
+        if (this.isADown || this.isDDown) {
+            this.velocity.x -= this.direction.x * 100.0 * t;
+        }
+
+        // --- Vertical Movement (Y Axis) ---
+        // Calculate vertical direction based on Space and Left Ctrl keys
+        const yDirection = Number(this.isSpaceDown) - Number(this.isLeftCtrlDown);
+
+        if (this.isSpaceDown || this.isLeftCtrlDown) {
+            // Apply force to the vertical velocity
+            this.velocity.y -= yDirection * 100.0 * t;
+        }
+
+        // --- Apply all movements to the controls ---
         this.pointerLockControls.moveRight(-this.velocity.x * t);
         this.pointerLockControls.moveForward(-this.velocity.z * t, this.freezeY);
+        this.pointerLockControls.moveUp(-this.velocity.y * t); // Call the new moveUp method
     }
+
+    __updateFPS(currentTime) {
+        this.frameCount++;
+        if (currentTime - this.lastFPSTime >= 1000) {
+            this.fps = this.frameCount;
+            this.frameCount = 0;
+            this.lastFPSTime = currentTime;
+        }
+        this.elapsedTime = currentTime - this.startTime;
+        this.loopedTime = (this.elapsedTime % 1000) / 1000;
+        this.deltaT = currentTime - this.lastFrameTime;
+        this.lastFrameTime = currentTime;
+    }
+
+    __updateCyclopeanCamera = function() {
+        const leftPos = new THREE.Vector3();
+        const rightPos = new THREE.Vector3();
+        const midPos = new THREE.Vector3();
+        const viewDir = new THREE.Vector3();
+
+        return function(poses) {
+            const views = poses.views;
+
+            if (views.length === 1) {
+                const view = views[0];
+
+                this.cyclopeanCamera.matrixWorldInverse.fromArray(Array.from(view.transform.inverse.matrix));
+                this.cyclopeanCamera.projectionMatrix.fromArray(Array.from(view.projectionMatrix));
+            } else if (views.length === 2) {
+                const leftViewIndex = views[0].eye === 'left' ? 0 : 1;
+                const leftView = views[leftViewIndex];
+                const rightView = views[1 - leftViewIndex];
+
+                const leftViewAtan = Utils.getTanHalfFovFromProj(leftView.projectionMatrix);
+                const rightViewAtan = Utils.getTanHalfFovFromProj(rightView.projectionMatrix);
+
+                // view matrix
+                const leftViewMat = leftView.transform.inverse.matrix;  // Float32Array
+                const rightViewMat = rightView.transform.inverse.matrix; // Float32Array
+                const targetViewMat = this.cyclopeanCamera.matrixWorldInverse;
+
+                leftPos.set(-leftViewMat[12], -leftViewMat[13], -leftViewMat[14]);
+                rightPos.set(-rightViewMat[12], -rightViewMat[13], -rightViewMat[14]);
+                midPos.copy(leftPos).add(rightPos).multiplyScalar(0.5);
+
+                viewDir.set(leftViewMat[8], leftViewMat[9], leftViewMat[10]);
+                const halfDistBetweenEyes = leftPos.distanceTo(rightPos) * 0.5;
+                const dirOffset = halfDistBetweenEyes / leftViewAtan.left;
+                midPos.sub(viewDir.multiplyScalar(dirOffset));
+
+                targetViewMat.fromArray(Array.from(leftViewMat));
+                targetViewMat.elements[12] = -midPos.x;
+                targetViewMat.elements[13] = -midPos.y;
+                targetViewMat.elements[14] = -midPos.z;
+
+                // proj matrix
+                const near = this.webxr.depthNear + dirOffset;
+                const far = this.webxr.depthFar + dirOffset;
+                this.cyclopeanCamera.projectionMatrix.makePerspective(
+                    -near * leftViewAtan.left,
+                    near * rightViewAtan.right,
+                    near * Math.max(leftViewAtan.top, rightViewAtan.top),
+                    -near * Math.max(leftViewAtan.bottom, rightViewAtan.bottom),
+                    near,
+                    far
+                );
+            }
+
+            this.cyclopeanCamera.matrixWorld.copy(this.cyclopeanCamera.matrixWorldInverse).invert();
+            this.cyclopeanCamera.matrixWorld.decompose(
+                this.cyclopeanCamera.position,
+                this.cyclopeanCamera.quaternion,
+                this.cyclopeanCamera.scale
+            );
+        }
+    }();
 
     __updateControls() {
         this.__updateCameraRotate();

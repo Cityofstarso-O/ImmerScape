@@ -285,6 +285,36 @@ export class Utils {
         }
     }
 
+    static getTanHalfFovFromProj(projArray) {
+        const projMatrix = projArray;
+        
+        const left   = (1 - projMatrix[8]) / projMatrix[0];
+        const right  = (1 + projMatrix[8]) / projMatrix[0];
+        const top    = (1 + projMatrix[9]) / projMatrix[5];
+        const bottom = (1 - projMatrix[9]) / projMatrix[5];
+
+        return {
+            top: top,
+            bottom: bottom,
+            left: left,
+            right: right,
+        };
+    }
+
+    static getFovFromProj(projArray, toDeg = false) {
+        const atan = Utils.getAtanHalfFovFromProj(projArray);
+
+        const radToDeg = toDeg ? 180 / Math.PI : 1;
+        atan.left   = Math.atan(atan.left   ) * radToDeg;
+        atan.right  = Math.atan(atan.right  ) * radToDeg;
+        atan.top    = Math.atan(atan.top    ) * radToDeg;
+        atan.bottom = Math.atan(atan.bottom ) * radToDeg;
+        atan.horizon = atan.left + atan.right;
+        atan.verticle = atan.bottom + atan.top;
+
+        return atan;
+    }
+
     static hex2rgb(hex_) {
         const hex = hex_.slice(1);
         const r = parseInt(hex.substring(0, 2), 16);

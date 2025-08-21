@@ -203,6 +203,26 @@ class PointerLockControls extends THREE.Controls {
 	}
 
 	/**
+	 * Moves the camera up along its local y-axis.
+	 *
+	 * @param {number} distance - The signed distance to move.
+	 */
+	moveUp(distance) {
+	    if (this.enabled === false) return;
+
+	    const camera = this.object;
+
+	    // The _vector is used as a temporary variable to hold the direction.
+	    // We get the camera's local up direction directly from its `up` vector,
+	    // assuming it's correctly maintained by the controls.
+	    _vector.copy(camera.up);
+
+	    // Apply the movement by scaling the up vector by the distance
+	    // and adding it to the camera's current position.
+	    camera.position.addScaledVector(_vector, distance);
+	}
+
+	/**
 	 * Activates the pointer lock.
 	 *
 	 * @param {boolean} [unadjustedMovement=false] - Disables OS-level adjustment for mouse acceleration, and accesses raw mouse input instead.

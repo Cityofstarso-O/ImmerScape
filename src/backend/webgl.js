@@ -13,6 +13,23 @@ export class WebGL {
         return this.graphicsAPI;
     }
 
+    getGPU() {
+        const gl = this.graphicsAPI;
+        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+        if (debugInfo) {
+            return gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+        }
+        return 'unknown';
+    }
+
+    async makeXRCompatible() {
+        await this.graphicsAPI.makeXRCompatible();
+    }
+
+    bindFrameBuffer(buffer) {
+        this.graphicsAPI.bindFramebuffer(this.graphicsAPI.FRAMEBUFFER, buffer);
+    }
+
     disableCull() {
         const gl = this.graphicsAPI;
         gl.disable(gl.CULL_FACE);
@@ -35,10 +52,10 @@ export class WebGL {
         gl.viewport(offset.x, offset.y, size.x, size.y);
     }
 
-    updateClearColor(r = 0, g = 0, b = 0, a = 1) {
+    updateClearColor(r = 0, g = 0, b = 0, a = 1, color = true, depth = true) {
         const gl = this.graphicsAPI;
         gl.clearColor(r, g, b, a);
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.clear(0 | (color ? gl.COLOR_BUFFER_BIT : 0) | (depth ? gl.DEPTH_BUFFER_BIT : 0));
     }
 
     updateBuffer(buffer, data) {

@@ -45,6 +45,12 @@
             display: flex;
             flex-direction: column;
         }
+        /* 面板滚动条 */
+        .panel-content-scroll {
+            flex-grow: 1; /* 占据剩余空间 */
+            overflow-y: auto; /* 内容溢出时显示垂直滚动条 */
+            overflow-x: hidden; /* 隐藏水平滚动条 */
+        }
         .fps-counter {
             position: absolute;
             top: 16px;
@@ -205,8 +211,11 @@
                 ></v-btn>
             </template>
             <v-list>
-                <v-list-item @click="openRightPanel('scenes')" prepend-icon="mdi-island" title="Scene"></v-list-item>
-                <v-list-item @click="openRightPanel('camera')" prepend-icon="mdi-camera" title="Camera"></v-list-item>
+                <template v-if="!isMobile">
+                    <v-list-item @click="openRightPanel('scenes')" prepend-icon="mdi-island" title="Scene"></v-list-item>
+                    <v-list-item @click="openRightPanel('camera')" prepend-icon="mdi-camera" title="Camera"></v-list-item>
+                    <v-list-item @click="openRightPanel('xr')" prepend-icon="mdi-google-cardboard" title="XR"></v-list-item>
+                </template>
                 <v-list-item @click="toggleFPS" prepend-icon="mdi-speedometer" title="FPS"></v-list-item>
                 <v-list-item @click="toggleImport" prepend-icon="mdi-file-import" title="Import"></v-list-item>
                 <v-list-item @click="showInstructions = true" prepend-icon="mdi-help-circle-outline" title="Help"></v-list-item>
@@ -223,6 +232,39 @@
                         :key="sceneName"
                         :title="sceneName"
                         @click="loadScene(sceneName)"
+                    ></v-list-item>
+                </v-list-group>
+                <!-- quality options only for mobile -->
+                <v-list-group v-if="isMobile" value="Quality">
+                    <template v-slot:activator="{ props }">
+                        <v-list-item
+                            v-bind="props" @click.stop
+                            prepend-icon="mdi-tune"
+                            title="质量"
+                        ></v-list-item>
+                    </template>
+                    <v-list-item
+                        v-for="q in qualityOptions"
+                        :key="q"
+                        :title="q"
+                        :active="quality === q"
+                        @click="setQuality(q)"
+                    ></v-list-item>
+                </v-list-group>
+                <!-- xr options only for mobile -->
+                <v-list-group v-if="isMobile" value="XR">
+                    <template v-slot:activator="{ props }">
+                        <v-list-item
+                            v-bind="props" @click.stop
+                            prepend-icon="mdi-google-cardboard"
+                            title="XR"
+                        ></v-list-item>
+                    </template>
+                    <v-list-item
+                        v-for="q in xrOptions"
+                        :key="q"
+                        :title="q"
+                        @click="enterXR(q)"
                     ></v-list-item>
                 </v-list-group>
             </v-list>
@@ -320,216 +362,289 @@
                     <div class="text-h6 flex-grow-1">
                         <span v-if="rightPanelMode === 'scenes'">场景管理</span>
                         <span v-if="rightPanelMode === 'camera'">相机管理</span>
+                        <span v-if="rightPanelMode === 'xr'">XR</span>
                     </div>
                     <v-btn icon="mdi-close" variant="text" @click="rightPanelMode = null"></v-btn>
                 </div>
                 <v-divider></v-divider>
                 <!-- 将列表包裹在一个带边框和内边距的div中 -->
-                <div v-if="rightPanelMode === 'scenes'" key="scenes-panel">
-                    <div class="scrollable-list-container">
-                        <v-list selectable class="scrollable-list">
-                            <v-list-item v-if="sceneList.length === 0">
-                                <v-list-item-title class="text-center text-grey">Scene list is empty</v-list-item-title>
-                            </v-list-item>
-                            <v-list-item
-                                v-for="scene in sceneList"
-                                :key="scene.uid"
-                                :title="scene.name"
-                                :active="scene.uid === selectedSceneUID"
-                                @click="selectScene(scene.uid)"
-                            >
-                                <template v-slot:append>
-                                    <v-btn 
-                                        icon="mdi-delete" 
-                                        variant="text" 
-                                        size="small"
-                                        @click.stop="removeScene(scene.uid)"
-                                    ></v-btn>
-                                </template>
-                            </v-list-item>
-                        </v-list>
+                <div class="panel-content-scroll">
+                    <div v-if="rightPanelMode === 'scenes'" key="scenes-panel">
+                        <div class="scrollable-list-container">
+                            <v-list selectable class="scrollable-list">
+                                <v-list-item v-if="sceneList.length === 0">
+                                    <v-list-item-title class="text-center text-grey">Scene list is empty</v-list-item-title>
+                                </v-list-item>
+                                <v-list-item
+                                    v-for="scene in sceneList"
+                                    :key="scene.uid"
+                                    :title="scene.name"
+                                    :active="scene.uid === selectedSceneUID"
+                                    @click="selectScene(scene.uid)"
+                                >
+                                    <template v-slot:append>
+                                        <v-btn 
+                                            icon="mdi-delete" 
+                                            variant="text" 
+                                            size="small"
+                                            @click.stop="removeScene(scene.uid)"
+                                        ></v-btn>
+                                    </template>
+                                </v-list-item>
+                            </v-list>
+                        </div>
+
+                        <!-- 变换面板 -->
+                        <div v-if="selectedSceneTransform" class="transform-panel pa-2" :key="transformPanelKey">
+                            <div class="text-subtitle-1 mb-2">Transform</div>
+
+                            <v-row no-gutters align="center" class="mb-1">
+                                <v-col cols="3" class="transform-row-label">Position</v-col>
+                                <v-col v-for="axis in ['x', 'y', 'z']" :key="'pos-' + axis" class="pa-1">
+                                    <v-text-field 
+                                        v-model.number="selectedSceneTransform.position[axis]"
+                                        density="compact" hide-details variant="outlined"
+                                    >
+                                        <template v-slot:prepend-inner>
+                                            <span class="draggable-label" @mousedown="startDrag($event, 'position', axis)">{{ axis.toUpperCase() }}</span>
+                                        </template>
+                                    </v-text-field>
+                                </v-col>
+                            </v-row>
+
+                            <v-row no-gutters align="center" class="mb-1">
+                                <v-col cols="3" class="transform-row-label">Rotation</v-col>
+                                <v-col v-for="axis in ['x', 'y', 'z']" :key="'rot-' + axis" class="pa-1">
+                                    <v-text-field 
+                                        v-model.number="selectedSceneTransform.rotation[axis]"
+                                        density="compact" hide-details variant="outlined"
+                                    >
+                                        <template v-slot:prepend-inner>
+                                            <span class="draggable-label" @mousedown="startDrag($event, 'rotation', axis)">{{ axis.toUpperCase() }}</span>
+                                        </template>
+                                    </v-text-field>
+                                </v-col>
+                            </v-row>
+
+                            <v-row no-gutters align="center" class="mb-1">
+                                <v-col cols="3" class="transform-row-label">Scale</v-col>
+                                <v-col v-for="axis in ['x', 'y', 'z']" :key="'scl-' + axis" class="pa-1">
+                                    <v-text-field 
+                                        v-model.number="selectedSceneTransform.scale[axis]"
+                                        density="compact" hide-details variant="outlined"
+                                    >
+                                        <template v-slot:prepend-inner>
+                                            <span class="draggable-label" @mousedown="startDrag($event, 'scale', axis)">{{ axis.toUpperCase() }}</span>
+                                        </template>
+                                    </v-text-field>
+                                </v-col>
+                            </v-row>
+                            <!-- 应用和重置按钮 -->
+                            <v-row no-gutters class="mt-3 pa-1">
+                                <v-spacer></v-spacer>
+                                <v-btn @click="resetTransform" variant="outlined">重置</v-btn>
+                                <v-spacer></v-spacer>
+                                <v-btn @click="applyTransform" color="primary">应用</v-btn>
+                            </v-row>
+                        </div>
+                        <div v-else class="pa-4 text-center text-grey">
+                            Select a scene to edit its properties
+                        </div>
                     </div>
-
-                    <!-- 变换面板 -->
-                    <div v-if="selectedSceneTransform" class="transform-panel pa-2" :key="transformPanelKey">
-                        <div class="text-subtitle-1 mb-2">Transform</div>
-
+                    <!-- 相机管理内容 -->
+                    <div v-if="rightPanelMode === 'camera'" key="camera-panel" class="pa-2">
+                        <div class="text-subtitle-1 mb-2">Camera Properties</div>
+                        <!-- position -->
                         <v-row no-gutters align="center" class="mb-1">
-                            <v-col cols="3" class="transform-row-label">Position</v-col>
-                            <v-col v-for="axis in ['x', 'y', 'z']" :key="'pos-' + axis" class="pa-1">
-                                <v-text-field 
-                                    v-model.number="selectedSceneTransform.position[axis]"
-                                    density="compact" hide-details variant="outlined"
-                                >
+                            <v-col cols="3" class="transform-row-label">pos</v-col>
+                            <v-col v-for="axis in ['x', 'y', 'z']" :key="'scl-' + axis" class="pa-1">
+                                <v-text-field  v-model.number="cameraSettings.pos[axis]" density="compact" hide-details variant="outlined">
                                     <template v-slot:prepend-inner>
-                                        <span class="draggable-label" @mousedown="startDrag($event, 'position', axis)">{{ axis.toUpperCase() }}</span>
+                                        <span class="draggable-label" @mousedown="startDrag($event, 'pos', axis)">{{ axis.toUpperCase() }}</span>
                                     </template>
                                 </v-text-field>
                             </v-col>
                         </v-row>
-
+                        <!-- look -->
                         <v-row no-gutters align="center" class="mb-1">
-                            <v-col cols="3" class="transform-row-label">Rotation</v-col>
-                            <v-col v-for="axis in ['x', 'y', 'z']" :key="'rot-' + axis" class="pa-1">
-                                <v-text-field 
-                                    v-model.number="selectedSceneTransform.rotation[axis]"
-                                    density="compact" hide-details variant="outlined"
-                                >
+                            <v-col cols="3" class="transform-row-label">look</v-col>
+                            <v-col v-for="axis in ['x', 'y', 'z']" :key="'scl-' + axis" class="pa-1">
+                                <v-text-field v-model.number="cameraSettings.look[axis]" density="compact" hide-details variant="outlined">
                                     <template v-slot:prepend-inner>
-                                        <span class="draggable-label" @mousedown="startDrag($event, 'rotation', axis)">{{ axis.toUpperCase() }}</span>
+                                        <span class="draggable-label" @mousedown="startDrag($event, 'look', axis)">{{ axis.toUpperCase() }}</span>
                                     </template>
                                 </v-text-field>
                             </v-col>
                         </v-row>
-
+                        <!-- up -->
                         <v-row no-gutters align="center" class="mb-1">
-                            <v-col cols="3" class="transform-row-label">Scale</v-col>
+                            <v-col cols="3" class="transform-row-label">up</v-col>
                             <v-col v-for="axis in ['x', 'y', 'z']" :key="'scl-' + axis" class="pa-1">
                                 <v-text-field 
-                                    v-model.number="selectedSceneTransform.scale[axis]"
+                                    v-model.number="cameraSettings.up[axis]"
                                     density="compact" hide-details variant="outlined"
                                 >
                                     <template v-slot:prepend-inner>
-                                        <span class="draggable-label" @mousedown="startDrag($event, 'scale', axis)">{{ axis.toUpperCase() }}</span>
+                                        <span class="draggable-label" @mousedown="startDrag($event, 'up', axis)">{{ axis.toUpperCase() }}</span>
                                     </template>
                                 </v-text-field>
                             </v-col>
                         </v-row>
-                        <!-- 应用和重置按钮 -->
-                        <v-row no-gutters class="mt-3 pa-1">
-                            <v-spacer></v-spacer>
-                            <v-btn @click="resetTransform" variant="outlined">重置</v-btn>
-                            <v-spacer></v-spacer>
-                            <v-btn @click="applyTransform" color="primary">应用</v-btn>
+                        <!-- fov -->
+                        <v-row no-gutters align="center" class="mb-1">
+                            <v-col cols="3" class="transform-row-label">FOV</v-col>
+                            <v-col class="pa-1">
+                                <v-slider v-model="cameraSettings.fov" :min="10" :max="150" :step="1" thumb-label hide-details>
+                                    <template v-slot:append>
+                                        <v-text-field v-model.number="cameraSettings.fov" density="compact" style="width: 80px" hide-details variant="outlined"></v-text-field>
+                                    </template>
+                                </v-slider>
+                            </v-col>
                         </v-row>
+                        <!-- near/far -->
+                        <v-row no-gutters align="center" class="mb-1">
+                            <v-col cols="3" class="transform-row-label">clip</v-col>
+                            <v-col v-for="axis in ['n', 'f']" :key="'scl-' + axis" class="pa-1">
+                                <v-text-field  v-model.number="cameraSettings.clip[axis]" density="compact" hide-details variant="outlined">
+                                    <template v-slot:prepend-inner>
+                                        <span class="draggable-label" @mousedown="startDrag($event, 'clip', axis)">{{ axis.toUpperCase() }}</span>
+                                    </template>
+                                </v-text-field>
+                            </v-col>
+                        </v-row>
+                        <!-- reset -->
+                        <v-row no-gutters class="mt-4 pa-1">
+                            <v-spacer></v-spacer>
+                            <v-btn @click="resetCameraSettings" variant="outlined">reset</v-btn>
+                        </v-row>
+                        <!-- dpr -->
+                        <div class="text-subtitle-1 mb-2">Resolution</div>
+                        <v-row no-gutters align="center" class="mb-1">
+                            <v-col cols="3" class="transform-row-label">dpr</v-col>
+                            <v-col class="pa-1">
+                                <v-slider v-model="cameraSettings.dpr" :min="0.8" :max="cameraSettings.maxDpr" :step="0.1" thumb-label hide-details>
+                                    <template v-slot:append>
+                                        <v-text-field v-model.number="cameraSettings.dpr" density="compact" style="width: 80px" hide-details variant="outlined"></v-text-field>
+                                    </template>
+                                </v-slider>
+                            </v-col>
+                        </v-row>
+                        <v-row no-gutters>
+                            <v-col class="text-center text-grey text-caption pa-1 pt-0">
+                                Rendering at: {{ statistics.width }} x {{ statistics.height }}
+                            </v-col>
+                        </v-row>
+                        <!-- background -->
+                        <div class="text-subtitle-1 mb-2 mt-4">Background</div>
+                        <v-row no-gutters align="center" class="mb-1">
+                             <v-col cols="3" class="transform-row-label">Color</v-col>
+                             <v-col class="d-flex align-center pa-1">
+                                <v-menu v-model="colorMenu" :close-on-content-click="false" location="end">
+                                    <template v-slot:activator="{ props }">
+                                        <div class="color-swatch" :style="{ backgroundColor: cameraSettings.backgroundColor }" v-bind="props"></div>
+                                    </template>
+                                    <v-color-picker v-model="cameraSettings.backgroundColor" hide-inputs></v-color-picker>
+                                </v-menu>
+                                <span class="text-caption text-grey flex-grow-1">{{ backgroundColorRGB }}</span>
+                                <v-btn @click="resetBackgroundColor" variant="outlined" size="small">reset</v-btn>
+                             </v-col>
+                        </v-row>
+                        <!-- control mode -->
+                        <div class="text-subtitle-1 mb-2 mt-4">Control Mode</div>
+                        <v-btn-toggle
+                            v-model="initControlMode"
+                            color="primary"
+                            variant="outlined"
+                            divided
+                            class="w-100 mb-4"
+                            v-if="!isMobile"
+                        >
+                            <v-btn value="orbit" @click="toggleControls('orbit')" class="flex-grow-1">
+                                <v-icon start>mdi-orbit</v-icon>
+                                Orbit
+                            </v-btn>
+                            <v-btn value="pointerLock" @click="toggleControls('pointerLock')" class="flex-grow-1">
+                                <v-icon start>mdi-cursor-move</v-icon>
+                                First Person
+                            </v-btn>
+                            <v-btn value="fly" @click="toggleControls('fly')" class="flex-grow-1">
+                                <v-icon start>mdi-airplane</v-icon>
+                                Fly
+                            </v-btn>
+                        </v-btn-toggle>
+                        <div v-else class="text-caption text-grey text-center pa-2">
+                            Control modes are available on desktop.
+                        </div>
                     </div>
-                    <div v-else class="pa-4 text-center text-grey">
-                        Select a scene to edit its properties
-                    </div>
-                </div>
-                <!-- 相机管理内容 -->
-                <div v-if="rightPanelMode === 'camera'" key="camera-panel" class="pa-2">
-                    <div class="text-subtitle-1 mb-2">Camera Properties</div>
-                    <!-- position -->
-                    <v-row no-gutters align="center" class="mb-1">
-                        <v-col cols="3" class="transform-row-label">pos</v-col>
-                        <v-col v-for="axis in ['x', 'y', 'z']" :key="'scl-' + axis" class="pa-1">
-                            <v-text-field  v-model.number="cameraSettings.pos[axis]" density="compact" hide-details variant="outlined">
-                                <template v-slot:prepend-inner>
-                                    <span class="draggable-label" @mousedown="startDrag($event, 'pos', axis)">{{ axis.toUpperCase() }}</span>
-                                </template>
-                            </v-text-field>
-                        </v-col>
-                    </v-row>
-                    <!-- look -->
-                    <v-row no-gutters align="center" class="mb-1">
-                        <v-col cols="3" class="transform-row-label">look</v-col>
-                        <v-col v-for="axis in ['x', 'y', 'z']" :key="'scl-' + axis" class="pa-1">
-                            <v-text-field v-model.number="cameraSettings.look[axis]" density="compact" hide-details variant="outlined">
-                                <template v-slot:prepend-inner>
-                                    <span class="draggable-label" @mousedown="startDrag($event, 'look', axis)">{{ axis.toUpperCase() }}</span>
-                                </template>
-                            </v-text-field>
-                        </v-col>
-                    </v-row>
-                    <!-- up -->
-                    <v-row no-gutters align="center" class="mb-1">
-                        <v-col cols="3" class="transform-row-label">up</v-col>
-                        <v-col v-for="axis in ['x', 'y', 'z']" :key="'scl-' + axis" class="pa-1">
-                            <v-text-field 
-                                v-model.number="cameraSettings.up[axis]"
-                                density="compact" hide-details variant="outlined"
+                    <!-- XR管理 -->
+                    <div v-if="rightPanelMode === 'xr'" key="xr-panel" class="pa-2">
+                        <!-- 环境信息 -->
+                        <div class="text-subtitle-1 mb-2">Environment Info</div>
+                        <v-list bg-color="transparent" density="compact" class="stat-list">
+                            <v-list-item>
+                                <v-row no-gutters align="center">
+                                    <v-col>GPU</v-col>
+                                    <v-col class="text-grey-lighten-1 text-right text-caption">{{ environmentInfo.gpu }}</v-col>
+                                </v-row>
+                            </v-list-item>
+                            <v-list-item>
+                                <v-row no-gutters align="center">
+                                    <v-col>WebXR API</v-col>
+                                    <v-col class="text-right">
+                                        <v-icon :color="environmentInfo.isWebXRSupported ? 'green' : 'red'" :icon="environmentInfo.isWebXRSupported ? 'mdi-check' : 'mdi-close'"></v-icon>
+                                    </v-col>
+                                </v-row>
+                            </v-list-item>
+                            <v-list-item>
+                                <v-row no-gutters align="center">
+                                    <v-col>Immersive VR</v-col>
+                                    <v-col class="text-right">
+                                        <v-icon :color="environmentInfo.isVRSupported ? 'green' : 'red'" :icon="environmentInfo.isVRSupported ? 'mdi-check' : 'mdi-close'"></v-icon>
+                                    </v-col>
+                                </v-row>
+                            </v-list-item>
+                            <v-list-item>
+                                <v-row no-gutters align="center">
+                                    <v-col>Immersive AR</v-col>
+                                    <v-col class="text-right">
+                                        <v-icon :color="environmentInfo.isARSupported ? 'green' : 'red'" :icon="environmentInfo.isARSupported ? 'mdi-check' : 'mdi-close'"></v-icon>
+                                    </v-col>
+                                </v-row>
+                            </v-list-item>
+                        </v-list>
+                        <!-- recheck -->
+                        <v-row no-gutters class="mt-4 pa-1">
+                            <v-spacer></v-spacer>
+                            <v-btn @click="recheckXR" variant="outlined">recheck</v-btn>
+                        </v-row>
+                        <div v-if="environmentInfo.isWebXRSupported">
+                            <!-- control mode -->
+                            <div class="text-subtitle-1 mb-2 mt-4">XR Mode</div>
+                            <v-btn-toggle
+                                v-model="xrMode"
+                                color="primary"
+                                variant="outlined"
+                                divided
+                                class="w-100 mb-4"
                             >
-                                <template v-slot:prepend-inner>
-                                    <span class="draggable-label" @mousedown="startDrag($event, 'up', axis)">{{ axis.toUpperCase() }}</span>
-                                </template>
-                            </v-text-field>
-                        </v-col>
-                    </v-row>
-                    <!-- fov -->
-                    <v-row no-gutters align="center" class="mb-1">
-                        <v-col cols="3" class="transform-row-label">FOV</v-col>
-                        <v-col class="pa-1">
-                            <v-slider v-model="cameraSettings.fov" :min="10" :max="150" :step="1" thumb-label hide-details>
-                                <template v-slot:append>
-                                    <v-text-field v-model.number="cameraSettings.fov" density="compact" style="width: 80px" hide-details variant="outlined"></v-text-field>
-                                </template>
-                            </v-slider>
-                        </v-col>
-                    </v-row>
-                    <!-- near/far -->
-                    <v-row no-gutters align="center" class="mb-1">
-                        <v-col cols="3" class="transform-row-label">clip</v-col>
-                        <v-col v-for="axis in ['n', 'f']" :key="'scl-' + axis" class="pa-1">
-                            <v-text-field  v-model.number="cameraSettings.clip[axis]" density="compact" hide-details variant="outlined">
-                                <template v-slot:prepend-inner>
-                                    <span class="draggable-label" @mousedown="startDrag($event, 'clip', axis)">{{ axis.toUpperCase() }}</span>
-                                </template>
-                            </v-text-field>
-                        </v-col>
-                    </v-row>
-                    <!-- reset -->
-                    <v-row no-gutters class="mt-4 pa-1">
-                        <v-spacer></v-spacer>
-                        <v-btn @click="resetCameraSettings" variant="outlined">reset</v-btn>
-                    </v-row>
-                    <!-- dpr -->
-                    <div class="text-subtitle-1 mb-2">Resolution</div>
-                    <v-row no-gutters align="center" class="mb-1">
-                        <v-col cols="3" class="transform-row-label">dpr</v-col>
-                        <v-col class="pa-1">
-                            <v-slider v-model="cameraSettings.dpr" :min="0.8" :max="cameraSettings.maxDpr" :step="0.1" thumb-label hide-details>
-                                <template v-slot:append>
-                                    <v-text-field v-model.number="cameraSettings.dpr" density="compact" style="width: 80px" hide-details variant="outlined"></v-text-field>
-                                </template>
-                            </v-slider>
-                        </v-col>
-                    </v-row>
-                    <v-row no-gutters>
-                        <v-col class="text-center text-grey text-caption pa-1 pt-0">
-                            Rendering at: {{ statistics.width }} x {{ statistics.height }}
-                        </v-col>
-                    </v-row>
-                    <!-- background -->
-                    <div class="text-subtitle-1 mb-2 mt-4">Background</div>
-                    <v-row no-gutters align="center" class="mb-1">
-                         <v-col cols="3" class="transform-row-label">Color</v-col>
-                         <v-col class="d-flex align-center pa-1">
-                            <v-menu v-model="colorMenu" :close-on-content-click="false" location="end">
-                                <template v-slot:activator="{ props }">
-                                    <div class="color-swatch" :style="{ backgroundColor: cameraSettings.backgroundColor }" v-bind="props"></div>
-                                </template>
-                                <v-color-picker v-model="cameraSettings.backgroundColor" hide-inputs></v-color-picker>
-                            </v-menu>
-                            <span class="text-caption text-grey flex-grow-1">{{ backgroundColorRGB }}</span>
-                            <v-btn @click="resetBackgroundColor" variant="outlined" size="small">reset</v-btn>
-                         </v-col>
-                    </v-row>
-                    <!-- control mode -->
-                    <div class="text-subtitle-1 mb-2 mt-4">Control Mode</div>
-                    <v-btn-toggle
-                        v-model="initControlMode"
-                        color="primary"
-                        variant="outlined"
-                        divided
-                        class="w-100 mb-4"
-                        v-if="!isMobile"
-                    >
-                        <v-btn value="orbit" @click="toggleControls('orbit')" class="flex-grow-1">
-                            <v-icon start>mdi-orbit</v-icon>
-                            Orbit
-                        </v-btn>
-                        <v-btn value="pointerLock" @click="toggleControls('pointerLock')" class="flex-grow-1">
-                            <v-icon start>mdi-cursor-move</v-icon>
-                            First Person
-                        </v-btn>
-                        <v-btn value="fly" @click="toggleControls('fly')" class="flex-grow-1">
-                            <v-icon start>mdi-airplane</v-icon>
-                            Fly
-                        </v-btn>
-                    </v-btn-toggle>
-                    <div v-else class="text-caption text-grey text-center pa-2">
-                        Control modes are available on desktop.
+                                <v-btn value="vr" class="flex-grow-1" :disabled="!environmentInfo.isVRSupported">
+                                    <v-icon start>mdi-virtual-reality</v-icon>
+                                    VR
+                                </v-btn>
+                                <v-btn value="ar" class="flex-grow-1" :disabled="!environmentInfo.isARSupported">
+                                    <v-icon start>mdi-augmented-reality</v-icon>
+                                    AR
+                                </v-btn>
+                            </v-btn-toggle>
+                            <!-- enter -->
+                            <v-row no-gutters class="mt-4 pa-1">
+                                <v-spacer></v-spacer>
+                                <v-btn @click="enterXR" variant="outlined">enter</v-btn>
+                            </v-row>
+                        </div>
+                        <div v-else class="text-caption text-grey text-center pa-2">
+                            WebXR not supported on this device.
+                        </div>
                     </div>
                 </div>
             </v-sheet>
@@ -614,7 +729,7 @@
             const isMobile = ref(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
             const menu = ref(false);
             // right dynamic panel
-            const rightPanelMode = ref(null); // 'scenes', 'camera', or null
+            const rightPanelMode = ref(null); // 'scenes', 'camera', 'xr' or null
             const isRightPanelOpen = computed(() => rightPanelMode.value !== null);
             const openRightPanel = (mode) => {
                 if (mode === rightPanelMode.value) {
@@ -826,6 +941,7 @@
                 }
             }, { deep: true });
             // camera manage
+            const standardDPR = window.devicePixelRatio;
             const isDragging = ref(0);
             const colorMenu = ref(false);
             const cameraSettings = reactive({
@@ -834,8 +950,8 @@
                 up: { x: 0, y: -1, z: 0},
                 fov: 60,
                 clip: { n: 0.1, f: 1000 },
-                dpr: window.devicePixelRatio,
-                maxDpr: window.devicePixelRatio,
+                dpr: standardDPR,
+                maxDpr: standardDPR,
                 backgroundColor: `#262626`,
             });
             const resetCameraSettings = () => {
@@ -881,10 +997,38 @@
                 showOverlay.value = !showOverlay.value;
                 viewer.setGizmoVisibility(showOverlay.value);
             }
+            // quality option for only mobile
+            const qualityOptions = ['High', 'Medium', 'Low'];
+            const quality2dprMapping = {'Low': 1.2, 'Medium': 1.2*0.7+standardDPR*0.3, 'High': 1.2*0.3+standardDPR*0.7};
+            const quality = ref('Medium');
+            const setQuality = (newQuality) => {
+                quality.value = newQuality;
+                viewer.setDPR(quality2dprMapping[newQuality]);
+                cameraSettings.dpr = quality2dprMapping[newQuality];
+            };
+            // xr manager
+            const xrMode = ref('vr');
+            const xrOptions = ['vr', 'ar'];
+            const enterXR = (value) => {
+                viewer.switchToXR('immersive-' + (isMobile.value ? value : xrMode.value));
+            };
+            const environmentInfo = {
+                gpu: 'unknown',
+                isWebXRSupported: false,
+                isVRSupported: false,
+                isARSupported: false,
+            };
+            const recheckXR = () => {
+                viewer.recheckXR();
+            };
 
             onMounted(() => {
                 console.log(document.getElementById('drop-zone'))
                 viewer = new ImmerScapeViewer();
+                if (isMobile.value) {
+                    cameraSettings.dpr = quality2dprMapping[quality.value];
+                    viewer.setDPR(quality2dprMapping[quality.value]);
+                }
                 viewer.run();
                 viewer.fetchSceneWithURL("/scenes/chair.glb");
                 viewer.addExternalListener((msg) => {
@@ -919,6 +1063,11 @@
                         isDragging.value = true;
                     } else if (msg.endDrag) {
                         isDragging.value = false;
+                    } else if (msg.envInfo) {
+                        environmentInfo.gpu = msg.env.gpu;
+                        environmentInfo.isWebXRSupported = msg.env.isApiSupported;
+                        environmentInfo.isVRSupported = msg.env.immersiveVRSupported;
+                        environmentInfo.isARSupported = msg.env.immersiveARSupported;
                     }
                 })
 
@@ -963,6 +1112,10 @@
                 isDragging, colorMenu, cameraSettings, resetCameraSettings, backgroundColorRGB, resetBackgroundColor,
                 // bottom right buttons
                 renderModeList, renderModeIcon, renderModeIdx, toggleRenderMode, showGrid, toggleGrid, showOverlay, toggleOverlay,
+                // quality option for only mobile
+                qualityOptions, quality2dprMapping, setQuality, quality,
+                // xr manager
+                xrMode, xrOptions, enterXR, environmentInfo, recheckXR, 
             };
         }
     }).use(vuetify).mount('#app');
