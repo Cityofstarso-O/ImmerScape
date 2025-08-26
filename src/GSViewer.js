@@ -78,6 +78,7 @@ export default class GSViewer {
         this.lastFrameTime = 0;
         this.deltaT = 0;
 
+        this.alphaCullThreshold = 3 / 255;
         this.renderMode = RenderMode.splat;
         this.showGrid = true;
         this.showGizmo = true;
@@ -175,6 +176,10 @@ export default class GSViewer {
 
     setGizmoVisibility(visible) {
         this.showGizmo = visible;
+    }
+
+    setAlphaCullThreshold(threshold) {
+        this.alphaCullThreshold = threshold;
     }
 
     lockPointer() {
@@ -347,14 +352,14 @@ export default class GSViewer {
             const pose = xrFrame.getViewerPose(this.webxr.refSpace);
             if (!pose) return;
 
-            this.__updateFPS(currentTime);
+            this.__updateFPS(currentTime + this.startTime);
             this.__updateCyclopeanCamera(pose);
             this.__runSplatSort(this.gsScene.forceSort(), false, true);
             this.__updateForRendererSizeChanges();
 
             if (this.__shouldRender()) {
                 this.graphicsAPI.bindFrameBuffer(this.webxr.framebuffer);
-                this.graphicsAPI.updateClearColor(0, 0, 0, 1, !this.webxr.isAR(), true);  // always use black
+                this.webxr.updateClearColor(0, 0, 0, 1);
                 for (const view of pose.views) {
                     const viewport = this.webxr.baseLayer.getViewport(view);
                     this.graphicsAPI.updateViewport({x:viewport.x, y:viewport.y}, {x:viewport.width, y:viewport.height});
@@ -457,6 +462,7 @@ export default class GSViewer {
             this.shaderManager.updateUniform('timestamp', this.loopedTime);
             this.shaderManager.updateUniform('sceneScale', this.gsScene.getCurrentScene('sceneScale'), true);
             this.shaderManager.updateUniform('renderMode', this.renderMode, true);
+            this.shaderManager.updateUniform('alphaCullThreshold', this.alphaCullThreshold, true);
 
             this.shaderManager.updateUniforms();
         }

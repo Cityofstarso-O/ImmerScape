@@ -1,6 +1,7 @@
 import numpy as np
 import utils as utils
 from threeD import Kernel_3dgs
+from spacetime import Kernel_spacetime
 import os
 
 class Scene:
@@ -36,7 +37,7 @@ class Scene:
             print(f"Load ply file error: {e}")
             return
 
-        known_kernels = [Kernel_3dgs]
+        known_kernels = [Kernel_3dgs, Kernel_spacetime]
         
         IdentifiedKernel = None
         for kernel_class in known_kernels:
@@ -56,10 +57,10 @@ class Scene:
 
     def reorder(self, type):
         self.params = self.Kernel.reorder(self.params, type)
-        utils.analyze_point_blocks(self.params[0])
+        self.Kernel.analyze_point_blocks(self.params[0])
 
     def visualize(self):
-        utils.visualize_with_pyvista(self.params[0])
+        self.Kernel.visualize_with_pyvista(self.params)
 
     def toGLB(self, outputPath, saveJson):
         gltf = self.Kernel.toGLB(self.params, self.pointCount, self.name)

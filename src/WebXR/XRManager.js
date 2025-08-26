@@ -13,8 +13,12 @@ export class XRManager {
         // state
         this.env = {
             gpu: 'unknown',
+            // special
+            AppleVisionPro: false,
+            // api support
             isXrCompatible: false,
             isApiSupported: false,       // Is navigator.xr available?
+            // mode support
             immersiveVRSupported: false, // Is 'immersive-vr' session supported?
             immersiveARSupported: false, // Is 'immersive-ar' session supported?
             inlineSupported: false,      // Is 'inline' session supported?
@@ -32,6 +36,9 @@ export class XRManager {
 
     get session() { return this.xrSession; }
     get enabledFeatures() { return this.xrSession.enabledFeatures; }
+    get environmentBlendMode() { return this.xrSession.environmentBlendMode; }
+    get isVR() { return Boolean(this.sessionType === 'immersive-vr'); }
+    get isAR() { return Boolean(this.sessionType === 'immersive-ar'); }
 
     get depthNear() { return this.xrSession.renderState.depthNear; }
     get depthFar() { return this.xrSession.renderState.depthFar; }
@@ -45,26 +52,38 @@ export class XRManager {
      * 设置注视点渲染级别。
      * @param {number} value - 渲染级别，通常在 0 到 1 之间。
      */
-    set fixedFoveation(value) { this.xrLayer.fixedFoveation = Math.min(0, Math.max(value, 1)); }
+    set fixedFoveation(value) { this.xrLayer.fixedFoveation = Math.max(0, Math.min(value, 1)); }
     get fixedFoveation() { return this.xrLayer.fixedFoveation; }
     get fixedFoveationAvailable() { return Boolean(this.xrLayer.fixedFoveation); }
 
     get refSpace() { return this.userReferenceSpace; }
     get baseRefSpace() { return this.baseReferenceSpace; }
 
-    isAR() {
-        return this.sessionType === 'immersive-ar';
+    updateClearColor(r, g, b, a) {
+        let clearColor = true;
+
+        // for all ar device, if we are running ar on ar device, then do not clear color buffer
+        if (this.xrSession && this.xrSession.environmentBlendMode !== 'opaque' && this.isAR) {
+            clearColor = false;
+        }
+
+        this.graphicsAPI.updateClearColor(r, g, b, a, clearColor, true);
     }
 
     async checkEnv() {
         this.env.gpu = this.parseGpuString(this.graphicsAPI.getGPU());
+        // special
+        if (this.env.gpu === 'Apple GPU') {
+            this.env.AppleVisionPro = true;
+        }
+        // api support
         if (!navigator.xr) {
             this.env.isApiSupported = false;
             return this.env;
         }
 
         this.env.isApiSupported = true;
-
+        // mode support
         try {
             this.env.immersiveVRSupported = await navigator.xr.isSessionSupported('immersive-vr');
         } catch (e) {
@@ -82,6 +101,12 @@ export class XRManager {
         } catch (e) {
             this.env.inlineSupported = false;
         }
+
+        // special
+        if (this.env.AppleVisionPro) {
+            this.env.immersiveARSupported = this.env.immersiveVRSupported;
+        }
+
         this.eventBus.emit('noteExternalListener', {
             envInfo: true,
             env: this.env,
@@ -89,6 +114,11 @@ export class XRManager {
         return this.env;
     }
 
+    /**
+     * 
+     * @param {String} sessionType : 'immersive-vr' or 'immersive-ar'
+     * @returns 
+     */
     async initSession(sessionType) {
         if (!this.env.isXrCompatible) {
             const result = await this.tryMakeGlCompatible();
@@ -96,8 +126,13 @@ export class XRManager {
                 return false;
             }
         }
+        let sessionToRequest = sessionType;
+        // special
+        if (this.env.AppleVisionPro && sessionType === 'immersive-ar') {
+            sessionToRequest = 'immersive-vr';
+        }
 
-        this.xrSession = await navigator.xr.requestSession(sessionType, {
+        this.xrSession = await navigator.xr.requestSession(sessionToRequest, {
             requiredFeatures: ["local"],
             optionalFeatures: []
         });

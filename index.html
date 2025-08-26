@@ -446,6 +446,17 @@
                                 <v-spacer></v-spacer>
                                 <v-btn @click="applyTransform" color="primary">应用</v-btn>
                             </v-row>
+                            <!-- alphaCullThreshold -->
+                            <v-row no-gutters align="center" class="mb-1">
+                                <v-col cols="3" class="transform-row-label">AlphaThreshold</v-col>
+                                <v-col class="pa-1">
+                                    <v-slider v-model="alphaCullThreshold" :min="0" :max="255" :step="1" thumb-label hide-details>
+                                        <template v-slot:append>
+                                            <v-text-field v-model.number="alphaCullThreshold" density="compact" style="width: 80px" hide-details variant="outlined"></v-text-field>
+                                        </template>
+                                    </v-slider>
+                                </v-col>
+                            </v-row>
                         </div>
                         <div v-else class="pa-4 text-center text-grey">
                             Select a scene to edit its properties
@@ -802,12 +813,12 @@
             });
             // cloud file
             const cloudSceneFiles = [
-                'chair.glb', 'fit409.glb', 'train.glb', 'stg.glb',
-                'flame.spb', 'kitchen.spb', 'girl.spb',
+                'chair', 'fit409', 'train', 'stg',
+                'flame', 'kitchen', 'girl',
             ];
             const loadScene = (sceneName) => {
                 if (viewer) {
-                    viewer.fetchSceneWithURL(`/scenes/${sceneName}`);
+                    viewer.fetchSceneWithURL(`/scenes/${sceneName}.glb`);
                 }
             };
             // scene manage
@@ -940,6 +951,15 @@
                     viewer.updateTransform();
                 }
             }, { deep: true });
+            // other scene panel content
+            const alphaCullThreshold = ref(3);
+            watch(alphaCullThreshold, (newValue) => {
+                let num = parseFloat(newValue) || 0;
+                num = Math.round(num);
+                num = Math.max(0, Math.min(255, num));
+                alphaCullThreshold.value = num;
+                viewer.setAlphaCullThreshold(alphaCullThreshold.value / 255);
+            });
             // camera manage
             const standardDPR = window.devicePixelRatio;
             const isDragging = ref(0);
@@ -1116,6 +1136,8 @@
                 qualityOptions, quality2dprMapping, setQuality, quality,
                 // xr manager
                 xrMode, xrOptions, enterXR, environmentInfo, recheckXR, 
+                // other scene panel content
+                alphaCullThreshold, 
             };
         }
     }).use(vuetify).mount('#app');

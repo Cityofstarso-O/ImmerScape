@@ -341,7 +341,7 @@ export class ShaderManager {
                 gl_Position        = quadPos;
 
                 ${this.debug ? `
-                debugOutput = vec4(0, 1, 2, 3);
+                //debugOutput = vec4(0, 1, 2, 3);
                 ` : ``};
             }
         `;

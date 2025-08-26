@@ -37,7 +37,8 @@ function sort(modelViewProj, timestamp) {
     // if chunkBased, cull on wasm. related value: splatSortCount, indexToSort
     const cullStartTime = performance.now();
     if (chunkBased) {
-        splatSortCount = cullByBVH(new Uint32Array(wasmMemory, indexesToSortOffset, splatCount), modelViewProj, bvhNodes, chunk2SplatsMapping);
+        splatSortCount = cullByBVH(new Uint32Array(wasmMemory, indexesToSortOffset, splatCount), 
+            modelViewProj, bvhNodes, chunk2SplatsMapping, Boolean(gsType === 2) ? timestamp : null);
     }
     const sortStartTime = performance.now();
     if (!memsetZero) memsetZero = new Uint32Array(distanceMapRange);
@@ -89,7 +90,7 @@ self.onmessage = async (e) => {
         chunkBased = data.chunkBased;
         chunkNum = data.chunkNum;
         if (chunkBased) {
-            bvhNodes = buildBVH(new Float32Array(data.chunks))
+            bvhNodes = buildBVH(new Float32Array(data.chunks), gsType === 2);
         }
         let allSplatsOnTexture = splatCount;
         if (data.chunkResolution) {
@@ -184,15 +185,15 @@ self.onmessage = async (e) => {
  * @param {Float32Array} aabbData - 包含所有包围盒数据的扁平数组。
  * @returns {object | null} - 返回 BVH 树的根节点对象，如果没有任何图元则返回 null。
  */
-function buildBVH(aabbData) {
-    // 1. 数据预处理 (与之前相同)
-    const numBoxes = aabbData.length / 6;
+function buildBVH(aabbData, dynamic = false) {
+    const dataPerChunk = dynamic ? 8 : 6;    
+    const numBoxes = aabbData.length / dataPerChunk;
     if (numBoxes === 0) return null;
 
     const primitives = [];
     for (let i = 0; i < numBoxes; i++) {
-        const offset = i * 6;
-        primitives.push({
+        const offset = i * dataPerChunk;
+        const primitive = {
             min: [aabbData[offset], aabbData[offset + 1], aabbData[offset + 2]],
             max: [aabbData[offset + 3], aabbData[offset + 4], aabbData[offset + 5]],
             center: [
@@ -201,7 +202,11 @@ function buildBVH(aabbData) {
                 (aabbData[offset + 2] + aabbData[offset + 5]) / 2,
             ],
             index: i
-        });
+        };
+        if (dynamic) {
+            primitive.t_range = [aabbData[offset + 6], aabbData[offset + 7]];
+        }
+        primitives.push(primitive);
     }
 
     const MAX_PRIMITIVES_IN_NODE = 1;
@@ -221,6 +226,15 @@ function buildBVH(aabbData) {
         const boundingBox = {
             center: [(range.max[0] + range.min[0]) / 2, (range.max[1] + range.min[1]) / 2, (range.max[2] + range.min[2]) / 2],
             extent: [(range.max[0] - range.min[0]) / 2, (range.max[1] - range.min[1]) / 2, (range.max[2] - range.min[2]) / 2],
+        }
+
+        if (dynamic) {
+            let t_range = [...primitives[startIndex].t_range];
+            for (let i = startIndex + 1; i < endIndex; i++) {
+                t_range[0] = Math.min(t_range[0], primitives[i].t_range[0]);
+                t_range[1] = Math.max(t_range[1], primitives[i].t_range[1]);
+            }
+            boundingBox.t_range = t_range;
         }
 
         const numPrimitives = endIndex - startIndex;
@@ -431,6 +445,13 @@ class Frustum {
     }
 }
 
+function isBeyondLifeRange(node, timestamp = null) {
+    if (timestamp && node.boundingBox.t_range) {
+        const t_range = node.boundingBox.t_range;
+        return t_range[0] > timestamp || t_range[1] < timestamp;
+    }
+    return false;
+}
 
 /**
  * 使用 JS 对象树结构的 BVH 对图元（块）进行视锥剔除。
@@ -440,7 +461,7 @@ class Frustum {
  * @param {Uint32Array} chunk2SplatsMapping - 从块索引到 splat 索引的映射。
  * @returns {number} 可见 splat 的总数。
  */
-function cullByBVH(indexesTosort, modelViewProj, bvhRootNode, chunk2SplatsMapping) {
+function cullByBVH(indexesTosort, modelViewProj, bvhRootNode, chunk2SplatsMapping, timestamp = null) {
     let visibleSplats = 0;
     if (!bvhRootNode) return 0;
 
@@ -450,7 +471,7 @@ function cullByBVH(indexesTosort, modelViewProj, bvhRootNode, chunk2SplatsMappin
     while (stack.length > 0) {
         const node = stack.pop();
 
-        if (frustum.isOutside(node)) {
+        if (frustum.isOutside(node) || isBeyondLifeRange(node, timestamp)) {
             continue;
         }
 

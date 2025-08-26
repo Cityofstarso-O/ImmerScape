@@ -498,9 +498,51 @@ export class GSKernel_SPACETIME {
         `;
     }
 
-    static getFetchFunc(buffers) {
+    static getFetchFunc(buffers, chunkBased) {
         const self = GSKernel_SPACETIME;
         let res = ``;
+        if (chunkBased) {
+            res += `
+                void splatIndex2RangeUV(in uint splatIndex, inout ivec2 rangeUV, inout ivec2 uv) {
+                    ivec2 texSize = textureSize(u_xyz, 0);
+
+                    int chunkWidth = texSize.x >> 4;;
+                    int current = int(splatIndex) >> 4;
+                    rangeUV.x = current % chunkWidth;
+                    rangeUV.y = (current / chunkWidth) >> 4;
+
+                    uv = index2uv(splatIndex, 1u, 0u, texSize);
+                }
+
+                mat3 fetchVrk(in vec3 s, in vec4 q)
+                {
+                    q = normalize(q);
+
+                    float xx = q.x * q.x;
+                    float yy = q.y * q.y;
+                    float zz = q.z * q.z;
+                    float xy = q.x * q.y;
+                    float xz = q.x * q.z;
+                    float yz = q.y * q.z;
+                    float wx = q.w * q.x;
+                    float wy = q.w * q.y;
+                    float wz = q.w * q.z;
+                    mat3 rot = mat3(
+                        1.0 - 2.0 * (yy + zz), 2.0 * (xy + wz), 2.0 * (xz - wy),
+                        2.0 * (xy - wz), 1.0 - 2.0 * (xx + zz), 2.0 * (yz + wx),
+                        2.0 * (xz + wy), 2.0 * (yz - wx), 1.0 - 2.0 * (xx + yy)
+                    );
+
+                    mat3 ss = mat3(
+                        s.x * s.x, 0.0, 0.0,
+                        0.0, s.y * s.y, 0.0,
+                        0.0, 0.0, s.z * s.z
+                    );
+                    return rot * ss * transpose(rot);
+                }
+            `;
+            return res;
+        }
         const pospad = buffers.pospad;
         res += `
             void fetchCenter(in uint splatIndex, inout vec3 center)
@@ -528,7 +570,7 @@ export class GSKernel_SPACETIME {
                     unpack16x2 = uint2fp16x2(texel.w);
                     omega.z = unpack16x2.x; omega.w = unpack16x2.y;
                     
-                    q = q + deltaT * omega;
+                    //q = q + deltaT * omega;
                     q = normalize(q);
 
                     float xx = q.x * q.x;
@@ -561,7 +603,7 @@ export class GSKernel_SPACETIME {
                     vec4 omega = uint2vec4(texel.z, vec4(${self.omegaRange[0].toFixed(5)}), vec4(${self.omegaRange[1].toFixed(5)}));
                     color = uint2rgba(texel.w);
 
-                    q = q + deltaT * omega;
+                    //q = q + deltaT * omega;
                     q = normalize(q);
 
                     float xx = q.x * q.x;
@@ -587,7 +629,7 @@ export class GSKernel_SPACETIME {
                     uvec4 texel = texelFetch(${rot.name}, index2uv(splatIndex, ${rot.texelPerSplat}u, 0u, textureSize(${rot.name}, 0)), 0);
                     vec4 q = uint2vec4(texel.x, vec4(${self.rotRange[0].toFixed(5)}), vec4(${self.rotRange[1].toFixed(5)}));
                     vec4 omega = uint2vec4(texel.y, vec4(${self.omegaRange[0].toFixed(5)}), vec4(${self.omegaRange[1].toFixed(5)}));
-                    q = q + deltaT * omega;
+                    //q = q + deltaT * omega;
                     q = normalize(q);
 
                     float xx = q.x * q.x;
@@ -748,16 +790,185 @@ export class GSKernel_SPACETIME {
         return res;
     }
 
-    static getFetchParams(buffers) {
-        let res = `
+    static getFetchParams(chunkBased) {
+        let res = ``;
+        if (chunkBased) {
+            res += `{
+                ivec2 rangeUV, uv;
+                splatIndex2RangeUV(splatIndex, rangeUV, uv);
+
+                rangeUV.x *= 2;
+                uvec4 range = texelFetch(u_range, rangeUV, 0);
+                vec2 xmin_ymin = unpackHalf2x16(range.x);
+                vec2 zmin_xmax = unpackHalf2x16(range.y);
+                vec2 ymax_zmax = unpackHalf2x16(range.z);
+                vec2 smin_smax = unpackHalf2x16(range.w);
+
+                rangeUV.x += 1;
+                range = texelFetch(u_range, rangeUV, 0);
+                vec2 m1min_m1max = unpackHalf2x16(range.x);
+                vec2 m2min_m2max = unpackHalf2x16(range.y);
+                vec2 m3min_m3max = unpackHalf2x16(range.z);
+
+                uint x11y10z11 = texelFetch(u_xyz, uv, 0).r;
+                const float inv1023 = 0.0009775171;
+                const float inv2047 = 0.0004885198;
+                splatCenter.x = (float((x11y10z11 >> 0) & 0x7FFu) * inv2047) * (zmin_xmax.y - xmin_ymin.x) + xmin_ymin.x;
+                splatCenter.y = (float((x11y10z11 >>11) & 0x3FFu) * inv1023) * (ymax_zmax.x - xmin_ymin.y) + xmin_ymin.y;
+                splatCenter.z = (float((x11y10z11 >>21) & 0x7FFu) * inv2047) * (ymax_zmax.y - zmin_xmax.x) + zmin_xmax.x;
+
+                // here, range is used to store 'other' param
+                vec3 motion1, motion2, motion3, s;
+                vec4 tmpToUnpack;
+
+                range = texelFetch(u_other, uv, 0);
+                tmpToUnpack = uint2rgba(range.x);
+                motion1 = tmpToUnpack.xyz * (m1min_m1max.y - m1min_m1max.x) + m1min_m1max.x;
+                s.x = tmpToUnpack.w;
+                tmpToUnpack = uint2rgba(range.y);
+                motion2 = tmpToUnpack.xyz * (m2min_m2max.y - m2min_m2max.x) + m2min_m2max.x;
+                s.y = tmpToUnpack.w;
+                tmpToUnpack = uint2rgba(range.z);
+                motion3 = tmpToUnpack.xyz * (m3min_m3max.y - m3min_m3max.x) + m3min_m3max.x;
+                s.z = tmpToUnpack.w;
+                vec2 tc_ts = uint2fp16x2(range.w);
+
+                float deltaT = timestamp - tc_ts.x;
+                splatCenter += (motion1 + (motion2 + motion3 * deltaT) * deltaT) * deltaT;
+
+                s = s * (smin_smax.y - smin_smax.x) + smin_smax.x;
+                s *= s;
+                vec4 q = texelFetch(u_q, uv, 0);
+                q = q * 2.0 - 1.0;
+                Vrk = fetchVrk(s, q);
+
+                splatColor = texelFetch(u_color, uv, 0);
+                splatColor.a *= exp(-tc_ts.y * deltaT * deltaT);
+            }`;
+            return res;
+        }
+        res += `
             fetchAll(splatIndex, splatCenter, splatColor, Vrk);
         `
-
         return res;
     }
 
     static getSpecificCode(buffers) {
         let res = ``;
         return res;
+    }
+
+    static createSortBufferAndChunkBuffer(scene, alphaThreshold = 10) {
+        const ln_alphaThreshold = Math.log(Math.max(5, alphaThreshold) / 255);
+        // splats may not fill the entire texture
+        // so that the indices of valid splats are likely of incontiuity.
+        // therefore we need all splats on texture
+        const allSplatsOnTexture = scene.chunkResolution.width * scene.chunkResolution.height * 256;
+        const sortBuffer = new Float32Array(allSplatsOnTexture * 13);
+        const chunkBuffer = new Float32Array(scene.chunkNum * 8);
+        const xyz = new Uint32Array(scene.buffers.u_xyz.buffer);
+        const other = new DataView(scene.buffers.u_other.buffer);
+        const color = new DataView(scene.buffers.u_color.buffer);
+        const range = new DataView(scene.buffers.u_range.buffer);
+        const chunkWidth = scene.buffers.u_xyz.width / 16, chunkHeight = scene.buffers.u_xyz.height / 16;
+        const chunkNum = scene.chunkNum;
+        const bit11Mask = 0x7FF;
+        const bit10Mask = 0x3FF;
+        // [chunkHeight, 16, chunkWidth, 16, 1]
+        // note that: chunkNum <= chunkWidth * chunkHeight
+        for (let i = 0; i < chunkNum; ++i) {
+            const rangeOffset = i * 4 * 4 * 2;
+            const xmin = Utils.readFp16(range, rangeOffset + 0, true);
+            const ymin = Utils.readFp16(range, rangeOffset + 2, true);
+            const zmin = Utils.readFp16(range, rangeOffset + 4, true);
+            const xmax = Utils.readFp16(range, rangeOffset + 6, true);
+            const ymax = Utils.readFp16(range, rangeOffset + 8, true);
+            const zmax = Utils.readFp16(range, rangeOffset + 10, true);
+            const motion1min = Utils.readFp16(range, rangeOffset + 16, true);
+            const motion1max = Utils.readFp16(range, rangeOffset + 18, true);
+            const motion2min = Utils.readFp16(range, rangeOffset + 20, true);
+            const motion2max = Utils.readFp16(range, rangeOffset + 22, true);
+            const motion3min = Utils.readFp16(range, rangeOffset + 24, true);
+            const motion3max = Utils.readFp16(range, rangeOffset + 26, true);
+            const chunk_w = i % chunkWidth;
+            const chunk_h = Math.floor(i / chunkWidth);
+
+            let bbXmin = xmax, bbXmax = xmin;
+            let bbYmin = ymax, bbYmax = ymin;
+            let bbZmin = zmax, bbZmax = zmin;
+            let bbTmin = 99999, bbTmax = -99999;
+            for (let local_h = 0; local_h < 16; ++local_h) {
+                for (let local_w = 0; local_w < 16; ++local_w) {
+                    const splatIndex = 1 * local_w + 16 * chunk_w + 16 * chunkWidth * local_h + 16 * chunkWidth * 16 * chunk_h;
+                    const x11y10z11 = xyz[splatIndex];
+                    const otherOffset = splatIndex * 16;
+                    const colorOffset = splatIndex * 4;
+                    const offset = splatIndex * 13;
+                    // fetch data
+                    const   x = Utils.uintX2float(bit11Mask&(x11y10z11>> 0), 11, xmin, xmax);
+                    const m1x = Utils.uint82float(other.getUint8(otherOffset +  0), motion1min, motion1max);
+                    const m2x = Utils.uint82float(other.getUint8(otherOffset +  4), motion2min, motion2max);
+                    const m3x = Utils.uint82float(other.getUint8(otherOffset +  8), motion3min, motion3max);
+                    const   y = Utils.uintX2float(bit10Mask&(x11y10z11>>11), 10, ymin, ymax);
+                    const m1y = Utils.uint82float(other.getUint8(otherOffset +  1), motion1min, motion1max);
+                    const m2y = Utils.uint82float(other.getUint8(otherOffset +  5), motion2min, motion2max);
+                    const m3y = Utils.uint82float(other.getUint8(otherOffset +  9), motion3min, motion3max);
+                    const   z = Utils.uintX2float(bit11Mask&(x11y10z11>>21), 11, zmin, zmax);
+                    const m1z = Utils.uint82float(other.getUint8(otherOffset +  2), motion1min, motion1max);
+                    const m2z = Utils.uint82float(other.getUint8(otherOffset +  6), motion2min, motion2max);
+                    const m3z = Utils.uint82float(other.getUint8(otherOffset + 10), motion3min, motion3max);
+                    // time radius
+                    const t_center = Utils.readFp16(other, otherOffset + 12, true);
+                    const t_scale = Utils.readFp16(other, otherOffset + 14, true);
+                    const opacity = color.getUint8(colorOffset + 3);
+                    let t_radius = 0;
+                    if (opacity > alphaThreshold) {
+                        t_radius = Math.sqrt((Math.log(opacity / 255) - ln_alphaThreshold) / t_scale);
+                    }
+                    bbTmin = Math.min(bbTmin, t_center - t_radius);
+                    bbTmax = Math.max(bbTmax, t_center + t_radius);
+                    // bounding box
+                    let bbRange;
+                    bbRange = Utils.compute4dgsBoundingBox(x, m1x, t_center, t_radius);
+                    bbXmin = Math.min(bbXmin, bbRange.min);
+                    bbXmax = Math.max(bbXmax, bbRange.max);
+                    bbRange = Utils.compute4dgsBoundingBox(y, m1y, t_center, t_radius);
+                    bbYmin = Math.min(bbYmin, bbRange.min);
+                    bbYmax = Math.max(bbYmax, bbRange.max);
+                    bbRange = Utils.compute4dgsBoundingBox(z, m1z, t_center, t_radius);
+                    bbZmin = Math.min(bbZmin, bbRange.min);
+                    bbZmax = Math.max(bbZmax, bbRange.max);
+                    
+                    // sortBuffer
+                    // x m1x m2x m3x y m1y m2y m3y z m1z m2z m3z t_center
+                    sortBuffer[offset + 0] =   x;
+                    sortBuffer[offset + 1] = m1x;
+                    sortBuffer[offset + 2] = m2x;
+                    sortBuffer[offset + 3] = m3x;
+                    sortBuffer[offset + 4] =   y;
+                    sortBuffer[offset + 5] = m1y;
+                    sortBuffer[offset + 6] = m2y;
+                    sortBuffer[offset + 7] = m3y;
+                    sortBuffer[offset + 8] =   z;
+                    sortBuffer[offset + 9] = m1z;
+                    sortBuffer[offset +10] = m2z;
+                    sortBuffer[offset +11] = m3z;
+                    sortBuffer[offset +12] = t_center;
+                }
+            }
+
+            const chunkOffset = 8 * i;
+            chunkBuffer[chunkOffset + 0] = bbXmin;
+            chunkBuffer[chunkOffset + 1] = bbYmin;
+            chunkBuffer[chunkOffset + 2] = bbZmin;
+            chunkBuffer[chunkOffset + 3] = bbXmax;
+            chunkBuffer[chunkOffset + 4] = bbYmax;
+            chunkBuffer[chunkOffset + 5] = bbZmax;
+            chunkBuffer[chunkOffset + 6] = bbTmin;
+            chunkBuffer[chunkOffset + 7] = bbTmax;
+        }
+
+        scene.sortBuffer = sortBuffer.buffer;
+        scene.chunkBuffer = chunkBuffer.buffer;
     }
 }

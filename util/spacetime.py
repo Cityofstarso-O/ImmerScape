@@ -8,111 +8,75 @@ from pygltflib import *
 import math
 import pyvista as pv
 from scipy.spatial.distance import pdist
+import keyboard
+from threeD import Kernel_3dgs
 
 class P(IntEnum):
-        x = 0
-        y = auto()
-        z = auto()
-        nx = auto()
-        ny = auto()
-        nz = auto()
-        f_dc_0 = auto()
-        f_dc_1 = auto()
-        f_dc_2 = auto()
-        f_rest_0 = auto()
-        f_rest_1 = auto()
-        f_rest_2 = auto()
-        f_rest_3 = auto()
-        f_rest_4 = auto()
-        f_rest_5 = auto()
-        f_rest_6 = auto()
-        f_rest_7 = auto()
-        f_rest_8 = auto()
-        f_rest_9 = auto()
-        f_rest_10 = auto()
-        f_rest_11 = auto()
-        f_rest_12 = auto()
-        f_rest_13 = auto()
-        f_rest_14 = auto()
-        f_rest_15 = auto()
-        f_rest_16 = auto()
-        f_rest_17 = auto()
-        f_rest_18 = auto()
-        f_rest_19 = auto()
-        f_rest_20 = auto()
-        f_rest_21 = auto()
-        f_rest_22 = auto()
-        f_rest_23 = auto()
-        f_rest_24 = auto()
-        f_rest_25 = auto()
-        f_rest_26 = auto()
-        f_rest_27 = auto()
-        f_rest_28 = auto()
-        f_rest_29 = auto()
-        f_rest_30 = auto()
-        f_rest_31 = auto()
-        f_rest_32 = auto()
-        f_rest_33 = auto()
-        f_rest_34 = auto()
-        f_rest_35 = auto()
-        f_rest_36 = auto()
-        f_rest_37 = auto()
-        f_rest_38 = auto()
-        f_rest_39 = auto()
-        f_rest_40 = auto()
-        f_rest_41 = auto()
-        f_rest_42 = auto()
-        f_rest_43 = auto()
-        f_rest_44 = auto()
-        opacity = auto()
-        scale_0 = auto()
-        scale_1 = auto()
-        scale_2 = auto()
-        rot_0 = auto()
-        rot_1 = auto()
-        rot_2 = auto()
-        rot_3 = auto()
-        total = auto()
+    x = 0
+    y = auto()
+    z = auto()
+    trbf_center = auto()
+    trbf_scale = auto()
+    nx = auto()
+    ny = auto()
+    nz = auto()
+    motion_0 = auto()
+    motion_1 = auto()
+    motion_2 = auto()
+    motion_3 = auto()
+    motion_4 = auto()
+    motion_5 = auto()
+    motion_6 = auto()
+    motion_7 = auto()
+    motion_8 = auto()
+    f_dc_0 = auto()
+    f_dc_1 = auto()
+    f_dc_2 = auto()
+    opacity = auto()
+    scale_0 = auto()
+    scale_1 = auto()
+    scale_2 = auto()
+    rot_0 = auto()
+    rot_1 = auto()
+    rot_2 = auto()
+    rot_3 = auto()
+    omega_0 = auto()
+    omega_1 = auto()
+    omega_2 = auto()
+    omega_3 = auto()
+    total = auto()
 
-SH_C0 = 0.28209479177387814
-
-class Kernel_3dgs:
+class Kernel_spacetime:
 
     @staticmethod
     def identify(header: str):
-        return 'f_rest_0' in header
+        return 'motion_0' in header
     
     @staticmethod
     def getParams(data: bytes):
         ply = np.frombuffer(data, dtype=np.float32).reshape([-1, P.total])
         ply = utils.alignTo256(ply, 256)
 
-        xyz = ply[:, P.x:P.z + 1]
-        s = ply[:, P.scale_0:P.scale_2 + 1]
+        xyz = ply[:, [P.x, P.y, P.z]]
+        motion1 = ply[:, [P.motion_0,  P.motion_1, P.motion_2]]
+        motion2 = ply[:, [P.motion_3,  P.motion_4, P.motion_5]]
+        motion3 = ply[:, [P.motion_6,  P.motion_7, P.motion_8]]
+        tc = ply[:, P.trbf_center:P.trbf_center + 1]
+        s = ply[:, [P.scale_0, P.scale_1, P.scale_2]]
+        ts = ply[:, P.trbf_scale:P.trbf_scale + 1]
         q = ply[:, [P.rot_1, P.rot_2, P.rot_3, P.rot_0]]
+        omega = ply[:, [P.omega_1, P.omega_2, P.omega_3, P.omega_0]]
         color = ply[:, [P.f_dc_0, P.f_dc_1, P.f_dc_2, P.opacity]]
-        d1 = ply[:, [P.f_rest_0,  P.f_rest_15, P.f_rest_30, 
-                     P.f_rest_1,  P.f_rest_16, P.f_rest_31, 
-                     P.f_rest_2,  P.f_rest_17, P.f_rest_32]]
-        d2 = ply[:, [P.f_rest_3,  P.f_rest_18, P.f_rest_33, 
-                     P.f_rest_4,  P.f_rest_19, P.f_rest_34, 
-                     P.f_rest_5,  P.f_rest_20, P.f_rest_35,
-                     P.f_rest_6,  P.f_rest_21, P.f_rest_36, 
-                     P.f_rest_7,  P.f_rest_22, P.f_rest_37]]
-        d3 = ply[:, [P.f_rest_8,  P.f_rest_23, P.f_rest_38, 
-                     P.f_rest_9,  P.f_rest_24, P.f_rest_39, 
-                     P.f_rest_10, P.f_rest_25, P.f_rest_40,
-                     P.f_rest_11, P.f_rest_26, P.f_rest_41,
-                     P.f_rest_12, P.f_rest_27, P.f_rest_42,
-                     P.f_rest_13, P.f_rest_28, P.f_rest_43, 
-                     P.f_rest_14, P.f_rest_29, P.f_rest_44]]
         
-        color[:, 0:3] = np.clip(0.5 + SH_C0 * color[:, 0:3], 0.0, 1.0)
         color[:, 3] = utils.sigmoid(color[:, 3])
+        color = np.clip(color, 0.0, 1.0)
         s = np.exp(s)
+        ts = np.exp(-ts)**2
+        # even with spacetime gaussian, ignoring omega seems to be no harm for quality
+        # so we directly normalize q
         q /= np.linalg.norm(q, axis=1, keepdims=True)
         
-        return xyz, s, q, color, d1, d2, d3
+        return xyz, motion1, motion2, motion3, tc, s, ts, q, color
                 
     @staticmethod
     def calcCov(s: np.ndarray, q: np.ndarray):
@@ -156,96 +120,132 @@ class Kernel_3dgs:
 
     @staticmethod
     def reorder(params, type):
-        xyz, s, q, color, d1, d2, d3 = params
+        xyz, motion1, motion2, motion3, tc, s, ts, q, color = params
 
+        xyzt = np.concatenate([xyz, tc], axis=1).copy()
+
+        # use time as the fourth dimension may even make results worse
+        # use 3dgs methods for now before more tests
         if type == 'Morton':
             sort_indices = Kernel_3dgs.z_order_sort(xyz)
         elif type == 'Hilbert':
             sort_indices = Kernel_3dgs.hilbert_curve_sort(xyz)
         
         xyz = xyz[sort_indices]
+        motion1 = motion1[sort_indices]
+        motion2 = motion2[sort_indices]
+        motion3 = motion3[sort_indices]
+        tc = tc[sort_indices]
         s = s[sort_indices]
+        ts = ts[sort_indices]
         q = q[sort_indices]
         color = color[sort_indices]
-        d1 = d1[sort_indices]
-        d2 = d2[sort_indices]
-        d3 = d3[sort_indices]
-        return xyz, s, q, color, d1, d2, d3
+        return xyz, motion1, motion2, motion3, tc, s, ts, q, color
     
     @staticmethod
-    def z_order_sort(points: np.ndarray) -> np.ndarray:
+    def z_order_sort(xyzt: np.ndarray, time_weight: float = 1.0) -> np.ndarray:
+        """
+        沿Z序（莫顿）曲线对4D点（xyzt）进行排序。
+
+        此方法将4D坐标映射到1D莫顿码，并根据这些编码进行排序。
+        它提供了良好的空间局部性，将邻近的点在排序后的列表中组合在一起。
+        
+        Args:
+            xyzt: 一个形状为 (N, 4) 的numpy数组，代表xyzt坐标。
+            time_weight: 一个浮点数，用于调整时间维度在排序中的权重。
+                         大于1会增加时间的重要性，小于1会降低其重要性。
+
+        Returns:
+            一个形状为 (N,) 的numpy数组，包含可以对原始点数组进行排序的索引。
+        """
         start_time = time.time()
 
-        # --- 步骤 A: 归一化和量化 ---
-        # 莫顿编码作用于非负整数，所以我们首先要将浮点坐标映射到整数空间。
-        # 我们将点云归一化到一个单位立方体 [0, 1]^3 中。
-        min_coords = points.min(axis=0)
-        max_coords = points.max(axis=0)
+        # --- 步骤 A: 加权、归一化和量化 ---
+        # 【修改】创建一个点的副本以进行加权，避免修改原始数据
+        xyzt_weighted = xyzt.copy()
+        xyzt_weighted[:, 3] *= time_weight # 将时间维度乘以权重
+
+        min_coords = xyzt_weighted.min(axis=0)
+        max_coords = xyzt_weighted.max(axis=0)
+        
         scale = (max_coords - min_coords).max()
+        if scale == 0:
+            return np.arange(len(xyzt))
 
-        normalized_points = (points - min_coords) / scale
+        normalized_xyzt = (xyzt_weighted - min_coords) / scale
 
-        # 将归一化的坐标量化为21位整数。
-        # 21位 * 3轴 = 63位，可以安全地存放在一个64位整数中。
-        # 2**21 - 1 提供了足够高的精度。
-        max_int_val = (1 << 21) - 1
-        int_coords = (normalized_points * max_int_val).astype(np.uint64)
+        p = 16
+        max_int_val = (1 << p) - 1
+        int_coords = (normalized_xyzt * max_int_val).astype(np.uint64)
 
-        # --- 步骤 B: 计算莫顿码 (使用"Magic Bits"高效算法) ---
+        # --- 步骤 B: 计算莫顿码 ---
         def spread_bits(coord: np.ndarray) -> np.ndarray:
-            """将一个21位整数的位扩展开，用于交错。"""
-            x = coord
-            x = (x | (x << 32)) & 0x001f00000000ffff
-            x = (x | (x << 16)) & 0x001f0000ff0000ff
-            x = (x | (x << 8))  & 0x100f00f00f00f00f
-            x = (x | (x << 4))  & 0x10c30c30c30c30c3
-            x = (x | (x << 2))  & 0x1249249249249249
+            """ 将16位整数的位扩展开，为四维交错做准备。 """
+            x = coord & 0xFFFF
+            x = (x | (x << 24)) & 0x000000FF000000FF
+            x = (x | (x << 12)) & 0x000F000F000F000F
+            x = (x | (x << 6))  & 0x0303030303030303
+            x = (x | (x << 3))  & 0x1111111111111111
             return x
-        # 对每个轴的坐标进行位扩展，然后交错合并
-        morton_codes = (spread_bits(int_coords[:, 0]) |
+        
+        morton_codes = (spread_bits(int_coords[:, 0])       |
                         (spread_bits(int_coords[:, 1]) << 1) |
-                        (spread_bits(int_coords[:, 2]) << 2))
+                        (spread_bits(int_coords[:, 2]) << 2) |
+                        (spread_bits(int_coords[:, 3]) << 3))
         
         # --- 步骤 C: 排序 ---
-        # 获取根据莫顿码排序的索引
         sort_indices = np.argsort(morton_codes)
         
         end_time = time.time()
-        print(f"Morton curve sort done, using: {end_time - start_time:.2f}s\n")
+        print(f"Morton curve sort (4D, time_weight={time_weight}) done, using: {end_time - start_time:.4f}s")
         
         return sort_indices
 
     @staticmethod
-    def hilbert_curve_sort(points: np.ndarray) -> np.ndarray:
+    def hilbert_curve_sort(xyzt: np.ndarray, time_weight: float = 1.0) -> np.ndarray:
+        """
+        沿希尔伯特曲线对4D点（xyzt）进行排序。
+
+        此方法将4D坐标映射到它们在希尔伯特曲线上的1D距离。
+        希尔伯特曲线通常提供比Z序曲线更好的空间局部性。
+        
+        Args:
+            xyzt: 一个形状为 (N, 4) 的numpy数组，代表xyzt坐标。
+            time_weight: 一个浮点数，用于调整时间维度在排序中的权重。
+                         大于1会增加时间的重要性，小于1会降低其重要性。
+
+        Returns:
+            一个形状为 (N,) 的numpy数组，包含可以对原始点数组进行排序的索引。
+        """
         start_time = time.time()
 
-        # --- 步骤 A: 归一化和量化 (与Z曲线版本相同) ---
-        min_coords = points.min(axis=0)
-        max_coords = points.max(axis=0)
+        # --- 步骤 A: 加权、归一化和量化 ---
+        # 【修改】创建一个点的副本以进行加权
+        xyzt_weighted = xyzt.copy()
+        xyzt_weighted[:, 3] *= time_weight # 将时间维度乘以权重
+
+        min_coords = xyzt_weighted.min(axis=0)
+        max_coords = xyzt_weighted.max(axis=0)
         scale = (max_coords - min_coords).max()
+        if scale == 0:
+            return np.arange(len(xyzt))
 
-        normalized_points = (points - min_coords) / scale
+        normalized_xyzt = (xyzt_weighted - min_coords) / scale
 
-        # 定义希尔伯特曲线的精度（每个维度上的比特数）。
-        # p=16 意味着每个坐标将被映射到 [0, 2^16 - 1] 的整数范围内。
         p = 16 
-        n = 3 # 3个维度
+        n = 4 
         max_int_val = (1 << p) - 1
-        int_coords = (normalized_points * max_int_val).astype(np.uint64)
+        int_coords = (normalized_xyzt * max_int_val).astype(np.uint64)
 
-        # --- 步骤 B: 计算希尔伯特曲线距离 (一维索引) ---
-        # 1. 创建一个3D、16位精度的希尔伯特曲线对象
+        # --- 步骤 B: 计算希尔伯特曲线距离 ---
         hilbert_curve = HilbertCurve(p, n)
-
-        # 2. 将所有整数坐标点转换为它们在曲线上的距离（一维索引）
-        # 这是一个高效的、向量化的操作
         hilbert_distances = hilbert_curve.distances_from_points(int_coords)
 
         # --- 步骤 C: 排序 ---
         sort_indices = np.argsort(hilbert_distances)
 
         end_time = time.time()
-        print(f"Hilbert curve sort done, using: {end_time - start_time:.2f}s\n")
+        print(f"Hilbert curve sort (4D, time_weight={time_weight}) done, using: {end_time - start_time:.4f}s")
 
         return sort_indices
     
@@ -254,7 +254,7 @@ class Kernel_3dgs:
         chunk_size = 256
         num_chunks = pointCount // chunk_size
 
-        descriptors, metadata = Kernel_3dgs.prepareForGLB(params)
+        descriptors, metadata = Kernel_spacetime.prepareForGLB(params)
         texData_len = len(metadata)
         gltf = GLTF2()
 
@@ -316,7 +316,7 @@ class Kernel_3dgs:
               0, 0, 0, 1
             ],
             extras={
-                "gsType": "ThreeD",
+                "gsType": "SPACETIME",
                 "name": name,
                 "num": pointCount,
                 "quality": "medium",
@@ -332,7 +332,7 @@ class Kernel_3dgs:
 
     @staticmethod
     def prepareForGLB(params: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]):
-        xyz, s, q, color, d1, d2, d3 = params
+        xyz, motion1, motion2, motion3, tc, s, ts, q, color = params
         n = xyz.shape[0]
         chunk_size = 256
         num_chunks = n // chunk_size
@@ -383,8 +383,56 @@ class Kernel_3dgs:
 
         quantized_s = np.around(normalized_s * ((1 << 8) - 1)).astype(np.uint8)
 
-        # range, Shape: uint32 (num_chunks, 1, 4)
-        quantized_range = np.concatenate((xyz_metadata, s_metadata), axis=1).astype(np.float16).view(np.uint32)
+        # motion1, Shape: uint8 (num_chunks, chunk_size, 3)
+        motion1_chunks = motion1.reshape((num_chunks, chunk_size, 3))
+        motion1_min = motion1_chunks.min(axis=(1, 2)) # Shape: (num_chunks,)
+        motion1_max = motion1_chunks.max(axis=(1, 2)) # Shape: (num_chunks,)
+        motion1_metadata = np.stack((motion1_min, motion1_max), axis=1) # Shape: (num_chunks, 2)
+
+        motion1_range = motion1_max - motion1_min
+        motion1_range[motion1_range == 0] = 1.0
+        normalized_motion1 = (motion1_chunks - motion1_min[:, np.newaxis, np.newaxis]) / motion1_range[:, np.newaxis, np.newaxis]
+
+        quantized_motion1 = np.around(normalized_motion1 * ((1 << 8) - 1)).astype(np.uint8)
+
+        # motion2, Shape: uint8 (num_chunks, chunk_size, 3)
+        motion2_chunks = motion2.reshape((num_chunks, chunk_size, 3))
+        motion2_min = motion2_chunks.min(axis=(1, 2)) # Shape: (num_chunks,)
+        motion2_max = motion2_chunks.max(axis=(1, 2)) # Shape: (num_chunks,)
+        motion2_metadata = np.stack((motion2_min, motion2_max), axis=1) # Shape: (num_chunks, 2)
+
+        motion2_range = motion2_max - motion2_min
+        motion2_range[motion2_range == 0] = 1.0
+        normalized_motion2 = (motion2_chunks - motion2_min[:, np.newaxis, np.newaxis]) / motion2_range[:, np.newaxis, np.newaxis]
+
+        quantized_motion2 = np.around(normalized_motion2 * ((1 << 8) - 1)).astype(np.uint8)
+
+        # motion3, Shape: uint8 (num_chunks, chunk_size, 3)
+        motion3_chunks = motion3.reshape((num_chunks, chunk_size, 3))
+        motion3_min = motion3_chunks.min(axis=(1, 2)) # Shape: (num_chunks,)
+        motion3_max = motion3_chunks.max(axis=(1, 2)) # Shape: (num_chunks,)
+        motion3_metadata = np.stack((motion3_min, motion3_max), axis=1) # Shape: (num_chunks, 2)
+
+        motion3_range = motion3_max - motion3_min
+        motion3_range[motion3_range == 0] = 1.0
+        normalized_motion3 = (motion3_chunks - motion3_min[:, np.newaxis, np.newaxis]) / motion3_range[:, np.newaxis, np.newaxis]
+
+        quantized_motion3 = np.around(normalized_motion3 * ((1 << 8) - 1)).astype(np.uint8)
+
+        # tc_ts
+        tc_ts = np.concatenate([tc, ts], axis=1).reshape((num_chunks, chunk_size, 2))
+        quantized_tc_ts = tc_ts.astype(np.float16).view(np.uint8)
+
+        # other
+        quantized_other = np.concatenate([quantized_motion1, quantized_s[:, :, 0:1], 
+                                          quantized_motion2, quantized_s[:, :, 1:2], 
+                                          quantized_motion3, quantized_s[:, :, 2:3], 
+                                          quantized_tc_ts], axis=-1).view(np.uint32)
+
+        # range, Shape: uint32 (num_chunks, 1, 8)
+        quantized_range = np.concatenate((xyz_metadata, s_metadata, 
+                                          motion1_metadata, motion2_metadata, motion3_metadata,
+                                          np.zeros_like(motion1_metadata)), axis=-1).astype(np.float16).view(np.uint32)
         quantized_range = quantized_range.reshape([num_chunks, 1, -1])
 
         # declare the textures
@@ -392,7 +440,7 @@ class Kernel_3dgs:
             'xyz': quantized_xyz,
             'q': quantized_q,
             'color': quantized_color,
-            's': quantized_s,
+            'other': quantized_other,
             'range': quantized_range,
         }
 
@@ -400,12 +448,12 @@ class Kernel_3dgs:
             'xyz': 'R32UI', 
             'q': 'RGBA8', 
             'color': 'RGBA8',
-            's': 'RGB8', 
+            'other': 'RGBA32UI', 
             'range': 'RGBA32UI'
         }
 
         # hilbert reorder for 16*16 texel region
-        hilbert_order = Kernel_3dgs.generate_hilbert_array(16).flatten()
+        hilbert_order = Kernel_spacetime.generate_hilbert_array(16).flatten()
         for key in quantized_params.keys():
             quantized_param = quantized_params[key]
             if quantized_param.shape[1] == 256:
@@ -431,6 +479,8 @@ class Kernel_3dgs:
             quantized_params[key] = quantized_param
 
         # create descriptors and metadata
+        # special for u_range
+        quantized_params['range'] = quantized_params['range'].reshape((chunkHeight, -1, 4))
         metadata = b""
         descriptors = {}
         offset = 0
@@ -501,6 +551,7 @@ class Kernel_3dgs:
 
         return hilbert_array
     
+    @staticmethod
     def analyze_point_blocks(points: np.ndarray, block_size: int = 256):
         """
         分析已分组的点云，统计组内的距离特性。
@@ -565,6 +616,7 @@ class Kernel_3dgs:
         print("-" * 25)
         print(f"max radius of chunk: {overall_max_distance:.4f}\n")
 
+    @staticmethod
     def visualize_with_pyvista(params: tuple):
         """
         Visualizes the point cloud in a native PyVista window,
@@ -574,35 +626,79 @@ class Kernel_3dgs:
             points: The (N, 3) NumPy array of XYZ coordinates.
             colors: (Optional) The (N, 3) NumPy array of RGB colors (uint8, 0-255).
         """
-        xyz, s, q, color, d1, d2, d3 = params
-        points = xyz.copy()
-        print("Creating visualization with PyVista...")
-        colors = utils.create_block_colors_high_contrast(points.shape[0], 256)
+        xyz, motion1, motion2, motion3, tc, s, ts, q, color = params
+        xyz_ = xyz.copy()
+        motion1_ = motion1.copy()
+        motion2_ = motion2.copy()
+        motion3_ = motion3.copy()
+        tc_ = tc.copy()
+        ts_ = ts.copy()
+        alpha_ = color[:, 3:4].copy()
+        currentXYZ = xyz_.copy()
+        deltaT = tc_.copy()
+        alphaThreshold = 5
+        def calcCurrentXYZ(t):
+            nonlocal currentXYZ, deltaT, alphaThreshold
+            deltaT = tc_ - t
+            currentXYZ = xyz_ + (motion1_ + (motion2_ + motion3_ * deltaT) * deltaT) * deltaT
+            currentXYZ[(alpha_ * np.exp(-ts_ * deltaT * deltaT) < alphaThreshold / 255).flatten()] = -99999
 
-        # 3. Create a plotter object.
+        print("Creating visualization with PyVista...")
+        colors = utils.create_block_colors_high_contrast(xyz_.shape[0], 256)
+
         plotter = pv.Plotter(window_size=[1280, 720])
         pv.set_plot_theme("dark")
 
-        # 4. Add the point cloud to the plotter.
-        # We check if custom colors were provided.
-        # --- Using Custom RGB Colors ---
         print("Using custom RGB colors for visualization.")
         plotter.add_mesh(
-            pv.PolyData(points),
+            pv.PolyData(xyz_),
             scalars=colors,  # Pass the (N, 3) color array here
             rgb=True,        # IMPORTANT: Tell PyVista these are RGB colors
             point_size=5,
             render_points_as_spheres=True
         )
 
-        # 5. Customize the scene and controls.
         plotter.show_axes()
 
-        # 6. ✅ Set the camera position BEFORE showing the plot.
-        # The format is: [(position), (focal_point), (view_up)]
         camera_position = [(0, 0, -10), (0, 0, 0), (0, -1, 0)]
         plotter.camera_position = camera_position
 
-        # 7. Display the interactive rendering window.
         print("\nDisplaying plot window. Press 'q' to close.")
-        plotter.show()
+        plotter.show(interactive=True, interactive_update=True)
+
+        frame_index = 0
+        num_frames = 21
+        pause = False
+
+        while True:
+            try:
+                if keyboard.is_pressed('q'):
+                    print("'q' key pressed, exiting loop.")
+                    break
+                elif keyboard.is_pressed('space'):
+                    pause = not pause
+                elif keyboard.is_pressed('a'):
+                    frame_index = (frame_index - 1 + num_frames) % num_frames
+                    print(f"frame: {frame_index}/{num_frames}")
+                elif keyboard.is_pressed('d'):
+                    frame_index = (frame_index + 1) % num_frames
+                    print(f"frame: {frame_index}/{num_frames}")
+                elif keyboard.is_pressed('z'):
+                    alphaThreshold = max(0, alphaThreshold - 1)
+                    print(f"alphaThreshold: {alphaThreshold}")
+                elif keyboard.is_pressed('c'):
+                    alphaThreshold = min(120, alphaThreshold + 1)
+                    print(f"alphaThreshold: {alphaThreshold}")
+            except:
+                break
+
+            calcCurrentXYZ(frame_index * 0.05)
+            plotter.meshes[0].points = currentXYZ
+            plotter.update()
+            
+            if not pause:
+                frame_index = (frame_index + 1) % num_frames
+
+            #time.sleep(0.05) # 约等于20 FPS
+        plotter.close()
+        print("Window closed. Exiting.")

@@ -285,6 +285,14 @@ export class Utils {
         }
     }
 
+    static compute4dgsBoundingBox(x, m1, t_center, t_radius) {
+        // we just ignore m2 and m3 if there are
+        // 'cause it is not worth solving quadratic equation for minor error
+        const X1 = x + m1 * (t_center - t_radius);
+        const X2 = x + m1 * (t_center + t_radius);
+        return { min: Math.min(X1, X2), max: Math.max(X1, X2) };
+    }
+
     static getTanHalfFovFromProj(projArray) {
         const projMatrix = projArray;
         
