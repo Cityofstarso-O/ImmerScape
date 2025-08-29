@@ -38,7 +38,7 @@ export class GlbLoader {
         if (chunkOffset < length) {
             const binaryChunkLength = dataView.getUint32(chunkOffset, true);
             const binaryChunkType = dataView.getUint32(chunkOffset + 4, true);
-             if (binaryChunkType !== 0x004E4942) { // 'BIN'
+            if (binaryChunkType !== 0x004E4942) { // 'BIN'
                 throw new Error('BIN chunk not found in glb file');
             }
             chunkOffset += 8;

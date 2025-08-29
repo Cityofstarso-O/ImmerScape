@@ -32,13 +32,13 @@ let bvhNodes;
 let chunk2SplatsMapping;
 
 
-function sort(modelViewProj, timestamp) {
+function sort(modelViewProj, sceneScale, timestamp) {
     // TODO
     // if chunkBased, cull on wasm. related value: splatSortCount, indexToSort
     const cullStartTime = performance.now();
     if (chunkBased) {
         splatSortCount = cullByBVH(new Uint32Array(wasmMemory, indexesToSortOffset, splatCount), 
-            modelViewProj, bvhNodes, chunk2SplatsMapping, Boolean(gsType === 2) ? timestamp : null);
+            modelViewProj, sceneScale, bvhNodes, chunk2SplatsMapping, Boolean(gsType === 2) ? timestamp : null);
     }
     const sortStartTime = performance.now();
     if (!memsetZero) memsetZero = new Uint32Array(distanceMapRange);
@@ -74,7 +74,7 @@ self.onmessage = async (e) => {
         if (!useSharedMemory) {
             transferablesortedIndexesOut = e.data.sort.sortedIndexes;
         }
-        sort(e.data.sort.modelViewProj, e.data.sort.timestamp);
+        sort(e.data.sort.modelViewProj, e.data.sort.sceneScale, e.data.sort.timestamp);
     } else if (e.data.init) {
         if (wasmInstance || wasmMemory) {
             wasmInstance = null;
@@ -356,13 +356,13 @@ function fillChunk2SplatsMapping(chunk2SplatsMapping, chunkNum, chunkWidth) {
 // Frustum 和 Plane 类的定义基本保持不变，但 isOutside 方法需要稍作修改
 
 class Plane {
-    constructor(p) {
+    constructor(p, sceneScale) {
         const mag = Math.sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]);
         if (mag > 1e-6) {
-            this.A = p[0] / mag;
-            this.B = p[1] / mag;
-            this.C = p[2] / mag;
-            this.D = p[3] / mag;
+            this.A = p[0] / mag * sceneScale;
+            this.B = p[1] / mag * sceneScale;
+            this.C = p[2] / mag * sceneScale;
+            this.D = p[3] / mag * sceneScale;
         } else {
             this.A = 0;
             this.B = 0;
@@ -396,7 +396,7 @@ class Plane {
 }
 
 class Frustum {
-    constructor(mvpMatrix) {
+    constructor(mvpMatrix, sceneScale) {
         this.planes = new Array(6);
         
         // MVP 矩阵是列主序的，将其转换为行主序以方便计算
@@ -411,28 +411,28 @@ class Frustum {
 
         // 左平面: row3 + row0
         for (let i = 0; i < 4; i++) p[i] = rows[3][i] + rows[0][i];
-        this.planes[0] = new Plane(p);
+        this.planes[0] = new Plane(p, sceneScale);
 
         // 右平面: row3 - row0
         for (let i = 0; i < 4; i++) p[i] = rows[3][i] - rows[0][i];
-        this.planes[1] = new Plane(p);
+        this.planes[1] = new Plane(p, sceneScale);
 
         // 底平面: row3 + row1
         for (let i = 0; i < 4; i++) p[i] = rows[3][i] + rows[1][i];
-        this.planes[2] = new Plane(p);
+        this.planes[2] = new Plane(p, sceneScale);
 
         // 顶平面: row3 - row1
         for (let i = 0; i < 4; i++) p[i] = rows[3][i] - rows[1][i];
-        this.planes[3] = new Plane(p);
+        this.planes[3] = new Plane(p, sceneScale);
 
         // 近平面: row2 (在C++代码中是 row3 + row2，但通常近平面是 row2 或 row3)
         // 您的代码是 `row2`，我们保持一致
         for (let i = 0; i < 4; i++) p[i] = rows[2][i];
-        this.planes[4] = new Plane(p);
+        this.planes[4] = new Plane(p, sceneScale);
         
         // 远平面: row3 - row2
         for (let i = 0; i < 4; i++) p[i] = rows[3][i] - rows[2][i];
-        this.planes[5] = new Plane(p);
+        this.planes[5] = new Plane(p, sceneScale);
     }
 
     isOutside(node) {
@@ -461,11 +461,11 @@ function isBeyondLifeRange(node, timestamp = null) {
  * @param {Uint32Array} chunk2SplatsMapping - 从块索引到 splat 索引的映射。
  * @returns {number} 可见 splat 的总数。
  */
-function cullByBVH(indexesTosort, modelViewProj, bvhRootNode, chunk2SplatsMapping, timestamp = null) {
+function cullByBVH(indexesTosort, modelViewProj, sceneScale, bvhRootNode, chunk2SplatsMapping, timestamp = null) {
     let visibleSplats = 0;
     if (!bvhRootNode) return 0;
 
-    const frustum = new Frustum(modelViewProj);
+    const frustum = new Frustum(modelViewProj, sceneScale);
     const stack = [bvhRootNode]; // 栈中现在直接存放节点对象
 
     while (stack.length > 0) {

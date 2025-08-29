@@ -156,4 +156,97 @@ export class GSScene {
             Utils.uint82float(covcol.getUint8(15, true))
         )
     }
+
+    modifyGlbJson() {
+        const scene = this.scenes[this.currentUID];
+        const originalGlbBuffer = scene.file.data;
+
+        const dataView = new DataView(originalGlbBuffer);
+        const textDecoder = new TextDecoder('utf-8');
+        const textEncoder = new TextEncoder();
+
+        // --- 步骤 1: 解析头部和旧的 JSON 块 ---
+
+        // 检查 "glTF" 魔术字
+        const magic = dataView.getUint32(0, true);
+        if (magic !== 0x46546C67) {
+            console.error("提供的文件不是有效的 GLB 文件。");
+            return originalGlbBuffer;
+        }
+
+        const version = dataView.getUint32(4, true);
+        const fileLength = dataView.getUint32(8, true);
+
+        // 第一个块总是 JSON 块
+        let byteOffset = 12;
+        const jsonChunkLength = dataView.getUint32(byteOffset, true);
+        byteOffset += 4;
+        const jsonChunkType = dataView.getUint32(byteOffset, true);
+        byteOffset += 4;
+
+        if (jsonChunkType !== 0x4E4F534A) { // 'JSON'
+            console.error("找不到 GLB 的 JSON 块。");
+            return originalGlbBuffer;
+        }
+
+        const jsonChunkData = new Uint8Array(originalGlbBuffer, byteOffset, jsonChunkLength);
+        // 计算旧 JSON 块对齐后的长度，以便找到 BIN 块的起始位置
+        const oldPaddedJsonLength = (jsonChunkLength + 3) & ~3; 
+
+        // --- 步骤 2: 解码并修改 JSON 对象 ---
+
+        const jsonString = textDecoder.decode(jsonChunkData);
+        let json = JSON.parse(jsonString);
+
+        // 调用用户提供的函数来修改 JSON
+        json.nodes[0].matrix = scene.modelMatrix.toArray();
+        json.nodes[0].extras.appliedScale = scene.sceneScale;
+
+        // --- 步骤 3: 重新编码新的 JSON 数据 ---
+
+        const newJsonString = JSON.stringify(json);
+        const newJsonChunkData = textEncoder.encode(newJsonString);
+        const newJsonChunkLength = newJsonChunkData.length;
+
+        // GLB 块必须是4字节对齐的。计算需要填充的空格数。
+        const padding = (4 - (newJsonChunkLength % 4)) % 4;
+        const newPaddedJsonLength = newJsonChunkLength + padding;
+
+        // 创建一个包含新 JSON 数据和填充的 Uint8Array
+        const paddedNewJsonData = new Uint8Array(newPaddedJsonLength);
+        paddedNewJsonData.set(newJsonChunkData);
+        // 用空格（0x20）填充
+        for (let i = 0; i < padding; i++) {
+            paddedNewJsonData[newJsonChunkLength + i] = 0x20;
+        }
+
+        // --- 步骤 4: 计算新文件总长度 ---
+
+        const originalBinChunkAndHeader = originalGlbBuffer.slice(12 + 8 + oldPaddedJsonLength);
+        const newFileLength = 12 + 8 + newPaddedJsonLength + originalBinChunkAndHeader.byteLength;
+
+        // --- 步骤 5: 重新组装新的 GLB 文件 ---
+
+        const newGlbBuffer = new ArrayBuffer(newFileLength);
+        const newGlbData = new Uint8Array(newGlbBuffer);
+        const newGlbDataView = new DataView(newGlbBuffer);
+
+        // 写入新的 GLB 头部
+        newGlbData.set(new Uint8Array(originalGlbBuffer, 0, 12)); // 复制旧头部
+        newGlbDataView.setUint32(8, newFileLength, true); // 更新总长度
+
+        // 写入新的 JSON 块
+        let newByteOffset = 12;
+        newGlbDataView.setUint32(newByteOffset, newPaddedJsonLength, true); // 新的 JSON 长度
+        newByteOffset += 4;
+        newGlbDataView.setUint32(newByteOffset, 0x4E4F534A, true); // 'JSON' 类型
+        newByteOffset += 4;
+        newGlbData.set(paddedNewJsonData, newByteOffset); // 新的、已填充的 JSON 数据
+        newByteOffset += newPaddedJsonLength;
+
+        // 写入原始的 BIN 块（包括其头部）
+        newGlbData.set(new Uint8Array(originalBinChunkAndHeader), newByteOffset);
+
+        return newGlbBuffer;
+    }
 }

@@ -190,6 +190,59 @@
             backdrop-filter: blur(5px);
             -webkit-backdrop-filter: blur(5px);
         }
+        /* --- 新增：时间轴样式 --- */
+        .timeline-container {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 60px; /* 悬停触发区域的高度 */
+            z-index: 5;
+        }
+        .timeline-controls {
+            position: absolute;
+            bottom: 14px;
+            left: 16px;
+            right: 200px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 16px;
+            background-color: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            border-radius: 8px;
+            color: white;
+            
+            /* 默认隐藏 */
+            opacity: 0;
+            transform: translateY(10px);
+            pointer-events: none;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        /* 鼠标悬停在容器上时，显示控制条 */
+        .timeline-container:hover .timeline-controls {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+        .timeline-time {
+            font-family: monospace;
+            font-size: 0.9em;
+            white-space: nowrap;
+        }
+        /* --- 自定义 Slider 样式 --- */
+        .timeline-slider .v-slider-track__background {
+            background-color: rgba(255, 255, 255, 0.3) !important;
+        }
+        .timeline-slider .v-slider-track__fill,
+        .timeline-slider .v-slider-thumb {
+            transition: none !important;
+        }
+        .timeline-slider .v-slider-track__fill,
+        .timeline-slider .v-slider-thumb__surface {
+            background-color: white !important;
+        }
     </style>
 </head>
 <body>
@@ -350,6 +403,46 @@
                         </template>
                     </v-tooltip>
                 </div>
+                <!-- --- 新增：时间轴控制条 --- -->
+                <div v-if="showTimeline" class="timeline-container">
+                    <div class="timeline-controls">
+                        <v-btn icon density="compact" variant="text" @click="goToStart">
+                            <v-icon>mdi-skip-previous</v-icon>
+                        </v-btn>
+                        <v-btn icon density="compact" variant="text" @click="togglePlayPause">
+                            <v-icon>{{ timeline.isPlaying ? 'mdi-play' : 'mdi-pause' }}</v-icon>
+                        </v-btn>
+
+                        <span class="timeline-time">{{ formattedCurrentTime }} / {{ formattedTotalDuration }}</span>
+                        
+                        <v-slider
+                            v-model="timeline.currentTime"
+                            :max="timeline.totalDuration"
+                            :step="0.01"
+                            hide-details
+                            density="compact"
+                            class="timeline-slider"
+                            @start="isDraggingTimelineSlider = true"
+                            @end="isDraggingTimelineSlider = false"
+                        ></v-slider>
+                        
+                        <v-menu location="top">
+                            <template v-slot:activator="{ props }">
+                                <v-btn v-bind="props" variant="text" density="compact">
+                                    {{ timeline.playbackSpeed.toFixed(1) }}x
+                                </v-btn>
+                            </template>
+                            <v-list density="compact">
+                                <v-list-item 
+                                    v-for="speed in [0.5, 1.0, 2.0]" 
+                                    :key="speed" 
+                                    :title="`${speed.toFixed(1)}x`"
+                                    @click="setPlaybackSpeed(speed)"
+                                ></v-list-item>
+                            </v-list>
+                        </v-menu>
+                    </div>
+                </div>
             </v-main>
 
             <!-- 分隔条 -->
@@ -380,7 +473,7 @@
                                     :key="scene.uid"
                                     :title="scene.name"
                                     :active="scene.uid === selectedSceneUID"
-                                    @click="selectScene(scene.uid)"
+                                    @click="selectScene(scene.uid, scene.gsType)"
                                 >
                                     <template v-slot:append>
                                         <v-btn 
@@ -456,6 +549,11 @@
                                         </template>
                                     </v-slider>
                                 </v-col>
+                            </v-row>
+                            <!-- 导出 -->
+                            <v-row no-gutters class="mt-3 pa-1">
+                                <v-spacer></v-spacer>
+                                <v-btn @click="exportGlb" color="primary">export</v-btn>
                             </v-row>
                         </div>
                         <div v-else class="pa-4 text-center text-grey">
@@ -822,23 +920,22 @@
                 }
             };
             // scene manage
+            const currentGSType = ref(2);
             const sceneList = ref([]);
             const removeScene = (sceneId) => {
                 sceneList.value = sceneList.value.filter(scene => scene.uid !== sceneId);
-                if (viewer) {
-                    viewer.removeScene(sceneId);
-                }
+                currentGSType.value = 0;
+                viewer.removeScene(sceneId);
             };
             const snackbar = reactive({
                 show: false,
                 text: '',
             });
             const selectedSceneUID = ref('');
-            const selectScene = (uid) => {
+            const selectScene = (uid, gsType) => {
                 selectedSceneUID.value = uid;
-                if (viewer) {
-                    viewer.switchToScene(uid);
-                }
+                currentGSType.value = gsType;
+                viewer.switchToScene(uid);
             };
             // selectedSceneTransform is reference to the internal transform object
             const selectedSceneTransform = computed(() => {
@@ -960,6 +1057,9 @@
                 alphaCullThreshold.value = num;
                 viewer.setAlphaCullThreshold(alphaCullThreshold.value / 255);
             });
+            const exportGlb = () => {
+                viewer.exportGlbFile();
+            };
             // camera manage
             const standardDPR = window.devicePixelRatio;
             const isDragging = ref(0);
@@ -1041,6 +1141,44 @@
             const recheckXR = () => {
                 viewer.recheckXR();
             };
+            // timeline
+            const showTimeline = computed(() => {
+                return currentGSType.value === 2;
+            });
+            const isDraggingTimelineSlider = ref(false);
+            const timeline = reactive({
+                isPlaying: false,
+                currentTime: 0,
+                totalDuration: 1, // default: 1 sec
+                playbackSpeed: 1.0,
+            });
+            const formatTime = (totalSeconds) => {
+                const minutes = Math.floor(totalSeconds / 60);
+                const seconds = Math.floor(totalSeconds % 60);
+                return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            };
+            const formattedCurrentTime = computed(() => formatTime(timeline.currentTime));
+            const formattedTotalDuration = computed(() => formatTime(timeline.totalDuration));
+            const togglePlayPause = () => {
+                timeline.isPlaying = !timeline.isPlaying;
+                viewer.togglePlayPause();
+            };
+            const goToStart = () => {
+                timeline.currentTime = 0;
+                viewer.playFromStart();
+            };
+            const setPlaybackSpeed = (speed) => {
+                timeline.playbackSpeed = speed;
+                viewer.setPlaybackSpeed(speed);
+            };
+            watch(() => timeline.currentTime, (newTime) => {
+                if (isDraggingTimelineSlider.value) {
+                    viewer.setTimestamp(newTime);
+                }
+            });
+            watch(isDraggingTimelineSlider, (newValue) => {
+                viewer.setIsDraggingTimeline(newValue);
+            });
 
             onMounted(() => {
                 console.log(document.getElementById('drop-zone'))
@@ -1048,19 +1186,26 @@
                 if (isMobile.value) {
                     cameraSettings.dpr = quality2dprMapping[quality.value];
                     viewer.setDPR(quality2dprMapping[quality.value]);
+                    cameraSettings.backgroundColor = '#000000';
                 }
                 viewer.run();
                 viewer.fetchSceneWithURL("/scenes/chair.glb");
                 viewer.addExternalListener((msg) => {
-                    if (msg.sceneLoaded) {
+                    if (msg.updateTimestamp) {
+                        if (!isDraggingTimelineSlider.value) {
+                            timeline.currentTime = msg.timestamp;
+                        }
+                    } else if (msg.sceneLoaded) {
                         const exists = sceneList.value.some(scene => scene.uid === msg.uid);
                         if (!exists) {
                             sceneList.value.push({
                                 uid: msg.uid,
                                 name: msg.name,
                                 transform: msg.transform,
+                                gsType: msg.gsType,
                             });
                         }
+                        currentGSType.value = msg.gsType;
                         snackbar.show = false;
                         selectedSceneUID.value = msg.uid;
                     } else if (msg.startLoad) {
@@ -1126,7 +1271,7 @@
                 // cloud files
                 cloudSceneFiles, loadScene,
                 // scene manager
-                sceneList, removeScene, snackbar, selectedSceneUID, selectScene, 
+                currentGSType, sceneList, removeScene, snackbar, selectedSceneUID, selectScene, 
                 selectedSceneTransform, dragState, startDrag, onDrag, stopDrag, transformPanelKey, resetTransform, applyTransform,
                 // camera manager
                 isDragging, colorMenu, cameraSettings, resetCameraSettings, backgroundColorRGB, resetBackgroundColor,
@@ -1137,7 +1282,9 @@
                 // xr manager
                 xrMode, xrOptions, enterXR, environmentInfo, recheckXR, 
                 // other scene panel content
-                alphaCullThreshold, 
+                alphaCullThreshold, exportGlb, 
+                // timeline
+                showTimeline, isDraggingTimelineSlider, timeline, formattedCurrentTime, formattedTotalDuration, togglePlayPause, goToStart, setPlaybackSpeed
             };
         }
     }).use(vuetify).mount('#app');

@@ -10,6 +10,7 @@ export class GSSorter {
         this.ready = false;
         this.sortRunning = false;
         this.chunkBased = false;
+        this.sortForFirstFrame = false;
 
         this.splatSortCount = 0;
         this.splatCount = 0;
@@ -57,11 +58,12 @@ export class GSSorter {
         }/*, [data.sortBuffer]*/);
     }
 
-    sort(mvpMatrix, cameraPositionArray, timestamp) {
+    sort(mvpMatrix, sceneScale, cameraPositionArray, timestamp, sortForFirstFrame) {
         const sortMessage = {
             'modelViewProj': mvpMatrix.elements,
+            'sceneScale': sceneScale,
             'cameraPosition': cameraPositionArray,
-            'timestamp': timestamp,
+            'timestamp': sortForFirstFrame ? 0 : timestamp,
         };
         // NOTE: when rendering 4dgs, we should always sort for current timestamp.
         // when sharedMemory is not available and the scene is large, 
@@ -78,6 +80,9 @@ export class GSSorter {
         this.worker.postMessage({
             'sort': sortMessage
         }, transferables);
+        if (sortForFirstFrame) {
+            this.sortForFirstFrame = true;
+        }
     }
 
     initSorter(splatCount) {
@@ -90,6 +95,10 @@ export class GSSorter {
 
                     const sortedIndexes = this.sortWorkerSortedIndexes.slice(0, e.data.splatSortCount);
                     this.eventBus.emit('sortDone', sortedIndexes);
+                    if (this.sortForFirstFrame) {
+                        this.eventBus.emit('sortForFirstFrameDone', {});
+                        this.sortForFirstFrame = false;
+                    }
                 }
                 this.splatSortCount = e.data.splatSortCount;
                 this.lastSortTime = e.data.sortTime;

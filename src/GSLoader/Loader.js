@@ -114,4 +114,28 @@ export class GSLoader {
             name: name,
         });
     }
+
+    static exportGlbFile(buffer, fileName) {
+        // 1. 从 ArrayBuffer 创建一个 Blob
+        const blob = new Blob([buffer], { type: 'model/gltf-binary' });
+
+        // 2. 为 Blob 创建一个临时的 URL
+        const url = URL.createObjectURL(blob);
+
+        // 3. 创建一个隐藏的下载链接并配置它
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = fileName; // 设置下载文件名
+        
+        // 4. 将链接添加到文档中，模拟点击，然后移除
+        document.body.appendChild(a);
+        a.click();
+        
+        // 5. 清理：等待片刻后移除链接并释放 URL
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 100);
+    }
 }

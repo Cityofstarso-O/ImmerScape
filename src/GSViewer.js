@@ -8,7 +8,7 @@ import { Utils } from "./Utils.js";
 import { OrbitControls } from './controls/OrbitControls.js';
 import { PointerLockControls } from './controls/PointerLockCotrols.js';
 import { SceneHelper } from './SceneHelper/sceneHelper.js';
-import { RenderMode } from "./Global.js";
+import { GSType, RenderMode } from "./Global.js";
 import * as THREE from "three"
 import { XRManager } from "./WebXR/XRManager.js";
 
@@ -69,14 +69,18 @@ export default class GSViewer {
         this.direction = new THREE.Vector3();
         this.isLeftMouseDown = false;
 
+        this.sortForFirstFrame = false;
+        this.eventBus.on('sortForFirstFrameDone', this.__onSortForFirstFrameDone.bind(this));
         this.startTime = performance.now();
-        this.elapsedTime = 0;
         this.loopedTime = 0;
         this.lastFPSTime = 0;
         this.frameCount = 0;
         this.fps = 30;
         this.lastFrameTime = 0;
         this.deltaT = 0;
+        this.pause = false;
+        this.isDraggingTimeline = false;
+        this.playSpeed = 1.0;
 
         this.alphaCullThreshold = 3 / 255;
         this.renderMode = RenderMode.splat;
@@ -100,6 +104,30 @@ export default class GSViewer {
         this.__setupControls();
 
         this.sceneHelper.init(this.camera)
+    }
+
+    togglePlayPause() {
+        this.pause = !this.pause;
+    }
+
+    setTimestamp(timestamp) {
+        this.loopedTime = timestamp;
+    }
+
+    playFromStart() {
+        this.sortForFirstFrame = true;
+    }
+
+    setPlaybackSpeed(speed) {
+        this.playSpeed = speed;
+    }
+
+    setIsDraggingTimeline(res) {
+        this.isDraggingTimeline = res;
+    }
+
+    exportGlbFile() {
+        GSLoader.exportGlbFile(this.gsScene.modifyGlbJson(), this.gsScene.getCurrentScene('name') + '.glb');
     }
 
     setControlMode(mode) {
@@ -394,7 +422,8 @@ export default class GSViewer {
                     uid: this.gsScene.getCurrentScene('uid'),
                     name: this.gsScene.getCurrentScene('name'),
                     transform: this.gsScene.getCurrentScene('transform'),
-                })
+                    gsType: GSType[this.gsScene.getCurrentScene('gsType')],
+                });
             }
 
             if (this.webxr.running) {
@@ -405,9 +434,22 @@ export default class GSViewer {
         }
     }();
 
+    __onSortForFirstFrameDone({}) {
+        this.sortForFirstFrame = false;
+        this.loopedTime = 0;
+    }
+
     __onBuffersReady({ data, sceneName }) {
         this.__shouldRender(true);
         this.__runSplatSort(false, true);
+        
+        if (this.options.isMobile) {
+            switch (data.gsType) {
+                case 'ThreeD': this.alphaCullThreshold = 15 / 255; break;
+                case 'SPACETIME': this.alphaCullThreshold = 35 / 255; break;
+                default: break;
+            }
+        }
     }
 
     __onXrSessionEnd({}) {
@@ -523,7 +565,8 @@ export default class GSViewer {
             cameraPositionArray[1] = camera.position.y;
             cameraPositionArray[2] = camera.position.z;
 
-            this.sorter.sort(mvpMatrix, cameraPositionArray, this.loopedTime);
+            const sceneScale = this.gsScene.getCurrentScene('sceneScale');
+            this.sorter.sort(mvpMatrix, sceneScale, cameraPositionArray, this.loopedTime, this.sortForFirstFrame);
 
             lastSortViewPos.copy(camera.position);
             lastSortViewDir.copy(sortViewDir);
@@ -707,10 +750,23 @@ export default class GSViewer {
             this.frameCount = 0;
             this.lastFPSTime = currentTime;
         }
-        this.elapsedTime = currentTime - this.startTime;
-        this.loopedTime = (this.elapsedTime % 1000) / 1000;
         this.deltaT = currentTime - this.lastFrameTime;
         this.lastFrameTime = currentTime;
+        if (!this.pause && !this.isDraggingTimeline) {
+            this.loopedTime += this.deltaT / 1000 * this.playSpeed; // ms => s
+            // for 4dgs, sorting cannot catch up with rendering
+            // therefore, the rendering of the first frame may use the sorted indices of the last frame
+            // which may cause inconsistency and flash
+            // To solve this, we wait for the sorting for the first frame is done, meanwhile keep rendering the last frame
+            if (!this.sortForFirstFrame && this.loopedTime > 1) {
+                this.sortForFirstFrame = true;
+            }
+            this.loopedTime = Math.min(1, this.loopedTime);
+            this.eventBus.emit('noteExternalListener', {
+                updateTimestamp: true,
+                timestamp: this.loopedTime,
+            });
+        }
     }
 
     __updateCyclopeanCamera = function() {
