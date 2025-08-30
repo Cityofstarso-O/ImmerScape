@@ -86,7 +86,6 @@ export class GlbLoader {
         scene.quality = json.nodes[0].extras.quality;
         scene.num = json.nodes[0].extras.num;
 
-        scene.appliedScale = json.nodes[0].extras.appliedScale;
         scene.appliedTransform = json.nodes[0].matrix;
         scene.file = file;
         scene.chunkBased = 'chunkBased';

@@ -20,6 +20,7 @@ export default class GSViewer {
         this.eventBus = new EventBus();
         this.options = {
             debug: false,
+            enableDebugOutput: false,
             destroyOnLoad: false,
             sharedMemoryForWorkers: false,
             enableSIMDInSort: true,
@@ -334,7 +335,11 @@ export default class GSViewer {
     resetCamera() {
         this.camera.position.copy(this.initialCameraPosition);
         this.camera.up.copy(this.cameraUp).normalize();
-        this.camera.lookAt(this.initialCameraLookAt);
+        if (this.camera.controls.type === 'orbit') {
+            this.controls.target.copy(this.initialCameraLookAt);
+        } else {
+            this.camera.lookAt(this.initialCameraLookAt);
+        }
     }
 
     run() {
@@ -440,6 +445,8 @@ export default class GSViewer {
     }
 
     __onBuffersReady({ data, sceneName }) {
+        // we reset camera each time we switch scene
+        this.resetCamera();
         this.__shouldRender(true);
         this.__runSplatSort(false, true);
         
@@ -502,7 +509,6 @@ export default class GSViewer {
             this.shaderManager.updateUniform('focal', [focalX, focalY], true);
             this.shaderManager.updateUniform('invViewport', [1 / viewportSize.width, 1 / viewportSize.height], true);
             this.shaderManager.updateUniform('timestamp', this.loopedTime);
-            this.shaderManager.updateUniform('sceneScale', this.gsScene.getCurrentScene('sceneScale'), true);
             this.shaderManager.updateUniform('renderMode', this.renderMode, true);
             this.shaderManager.updateUniform('alphaCullThreshold', this.alphaCullThreshold, true);
 
@@ -565,8 +571,7 @@ export default class GSViewer {
             cameraPositionArray[1] = camera.position.y;
             cameraPositionArray[2] = camera.position.z;
 
-            const sceneScale = this.gsScene.getCurrentScene('sceneScale');
-            this.sorter.sort(mvpMatrix, sceneScale, cameraPositionArray, this.loopedTime, this.sortForFirstFrame);
+            this.sorter.sort(mvpMatrix, cameraPositionArray, this.loopedTime, this.sortForFirstFrame);
 
             lastSortViewPos.copy(camera.position);
             lastSortViewDir.copy(sortViewDir);
@@ -576,10 +581,12 @@ export default class GSViewer {
 
     __resolveOptions() {
         // iOS makes choosing the right WebAssembly configuration tricky :(
-        const iOSSemVer = Utils.isIOS() ? Utils.getIOSSemever() : null;
-        if (iOSSemVer) {
-            this.options.sharedMemoryForWorkers = this.options.sharedMemoryForWorkers && !(iOSSemVer.major <= 16 && iOSSemVer.minor < 4);
-        }
+        //const iOSSemVer = Utils.isIOS() ? Utils.getIOSSemever() : null;
+        //if (iOSSemVer) {
+        //    this.options.sharedMemoryForWorkers = this.options.sharedMemoryForWorkers && !(iOSSemVer.major <= 16 && iOSSemVer.minor < 4);
+        //}
+        // sharedMemoryForWorkers feature has not finished
+        this.options.sharedMemoryForWorkers = false;
 
         this.options.initialCameraPosition = new THREE.Vector3().fromArray(this.options.initialCameraPosition || [0, 0, -2]);
         this.options.cameraUp = new THREE.Vector3().fromArray(this.options.cameraUp || [0, -1, 0]);
@@ -587,6 +594,9 @@ export default class GSViewer {
         this.options.cameraFOV = this.options.cameraFOV || 60;
 
         this.options.isMobile = Utils.isMobile();
+
+        this.options.destroyOnLoad = this.options.isMobile;
+        this.options.cacheShaders = !this.options.isMobile;
 
         if (this.options.enablePointerLock) {
             if (!document.getElementById('blocker') || this.options.isMobile) {

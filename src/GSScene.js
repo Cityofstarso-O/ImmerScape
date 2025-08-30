@@ -3,6 +3,9 @@ import * as THREE from "three"
 
 export class GSScene {
     constructor(options, eventBus, graphicsAPI) {
+        this.destroyOnLoad = options.destroyOnLoad;
+        this.enableDebugOutput = options.enableDebugOutput;
+
         this.eventBus = eventBus;
         this.eventBus.on('buffersReady', this.onBuffersReady.bind(this));
         this.scenes = {};
@@ -24,8 +27,12 @@ export class GSScene {
         this.setupTex(uid);
 
         // set state: new scene is ready
+        const oldUID = this.currentUID;
         this.currentUID = uid;
         this.ready = true;
+        if (this.destroyOnLoad && (oldUID !== this.currentUID)) {
+            this.removeScene(oldUID);
+        }
     }
 
     setupTex(sceneName) {
@@ -36,7 +43,9 @@ export class GSScene {
             value.buffer = null;
             ++bindIndex;
         });
-        console.log(this.scenes[sceneName])
+        if (this.enableDebugOutput) {
+            console.log(this.scenes[sceneName]);
+        }
     }
 
     async destoryOldScene(oldScene) {
@@ -51,7 +60,9 @@ export class GSScene {
 
             delete this.scenes[oldScene];
         }
-        console.log('dstory', this.scenes)
+        if (this.enableDebugOutput) {
+            console.log('destory', this.scenes);
+        }
     }
 
     removeScene(uid) {
@@ -69,26 +80,26 @@ export class GSScene {
     }
 
     updateTransform = function() {
+        const scaleMat = new THREE.Matrix4();
         const tmpMat = new THREE.Matrix4();
         const euler = new THREE.Euler(0, 0, 0, 'ZXY');
         const deg2rad = Math.PI / 180;
         return function() {
             const transform = this.scenes[this.currentUID].transform;
             euler.set(transform.rotation.x * deg2rad, transform.rotation.y * deg2rad, transform.rotation.z * deg2rad);
+            scaleMat.makeScale(transform.scale.x, transform.scale.x, transform.scale.x);
             tmpMat.makeRotationFromEuler(euler);
+            tmpMat.multiply(scaleMat);
             tmpMat.setPosition(transform.position.x, transform.position.y, transform.position.z);
 
             const modelMatrix = this.scenes[this.currentUID].modelMatrix;
             modelMatrix.copy(this.scenes[this.currentUID].appliedTransform);
             modelMatrix.premultiply(tmpMat);
-
-            this.scenes[this.currentUID].sceneScale = this.scenes[this.currentUID].appliedScale * transform.scale.x;
         }
     }();
 
     applyTransform() {
         this.scenes[this.currentUID].appliedTransform.copy(this.scenes[this.currentUID].modelMatrix);
-        this.scenes[this.currentUID].appliedScale = this.scenes[this.currentUID].sceneScale;
 
         const transform = this.scenes[this.currentUID].transform;
         transform.position.x = 0;
@@ -104,9 +115,7 @@ export class GSScene {
 
     resetTransform() {
         this.scenes[this.currentUID].appliedTransform.fromArray(this.scenes[this.currentUID].file.json.nodes[0].matrix);
-        this.scenes[this.currentUID].appliedScale = this.scenes[this.currentUID].file.json.nodes[0].extras.appliedScale;
         this.scenes[this.currentUID].modelMatrix.copy(this.scenes[this.currentUID].appliedTransform);
-        this.scenes[this.currentUID].sceneScale = this.scenes[this.currentUID].appliedScale;
 
         const transform = this.scenes[this.currentUID].transform;
         transform.position.x = 0;
@@ -200,7 +209,6 @@ export class GSScene {
 
         // 调用用户提供的函数来修改 JSON
         json.nodes[0].matrix = scene.modelMatrix.toArray();
-        json.nodes[0].extras.appliedScale = scene.sceneScale;
 
         // --- 步骤 3: 重新编码新的 JSON 数据 ---
 

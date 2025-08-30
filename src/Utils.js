@@ -347,7 +347,7 @@ export class Utils {
     }
 
     static getIOSSemever() {
-        if (isIOS()) {
+        if (Utils.isIOS()) {
             const extract = navigator.userAgent.match(/OS (\d+)_(\d+)_?(\d+)?/);
             return new Semver(
                 parseInt(extract[1] || 0, 10),

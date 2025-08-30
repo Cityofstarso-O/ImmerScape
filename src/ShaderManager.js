@@ -109,11 +109,6 @@ export class ShaderManager {
                 'type': '1f',
                 'update': true,
             },
-            'sceneScale': {
-                'value': 1.0,
-                'type': '1f',
-                'update': true,
-            },
             'frustumDilation': {
                 'value': 0.1,
                 'type': '1f',
@@ -205,6 +200,7 @@ export class ShaderManager {
         if (!this.programs[key]) {
             const vs = this.createVS(data.buffers, gsKernel, data.chunkBased);
             const fs = this.createFS();
+            console.log('build program for ', key)
             //console.log(vs);
             //console.log(fs);
             this.createProgram(key, vs, fs, this.debug ? [this.debugTF.outName] : null);
@@ -254,7 +250,6 @@ export class ShaderManager {
 
             uniform int splatCount;
             uniform float splatScale;
-            uniform float sceneScale;
             uniform float frustumDilation;
             uniform float alphaCullThreshold;
             uniform int renderMode;
@@ -279,7 +274,6 @@ export class ShaderManager {
                 mat3 Vrk;
                 ${gsKernel.getFetchParams(chunkBased)}
 
-                splatCenter *= sceneScale;
                 vec4 viewCenter = viewMatrix * vec4(splatCenter, 1.0);
                 vec4 clipCenter = projectionMatrix * viewCenter;
                 vec2 fragPos = inPosition.xy;
@@ -300,7 +294,7 @@ export class ShaderManager {
                 v_fragCol = splatColor;
 
                 float s = 1.0 / (viewCenter.z * viewCenter.z);
-                mat3 J = sceneScale * mat3(focal.x / viewCenter.z, 0., -(focal.x * viewCenter.x) * s, 0.,
+                mat3 J = mat3(focal.x / viewCenter.z, 0., -(focal.x * viewCenter.x) * s, 0.,
                     focal.y / viewCenter.z, -(focal.y * viewCenter.y) * s, 0., 0., 0.);
                 mat3 W = transpose(mat3(viewMatrix));
                 mat3 T = W * J;

@@ -320,7 +320,6 @@ class Kernel_spacetime:
                 "name": name,
                 "num": pointCount,
                 "quality": "medium",
-                "appliedScale": 1.0,
             }
         ))
         gltf.scenes.append(Scene(nodes=[0]))

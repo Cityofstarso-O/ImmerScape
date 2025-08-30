@@ -36,8 +36,6 @@ export class GSLoader {
                 };
                 data.appliedTransform = data.appliedTransform ? new THREE.Matrix4().fromArray(data.appliedTransform) : new THREE.Matrix4();
                 data.modelMatrix = data.appliedTransform.clone();
-                data.appliedScale = data.appliedScale || 1.0;
-                data.sceneScale = data.appliedScale;
                 data.chunkBased = data.chunkBased || '';
                 console.log(`[${(this.recvTime - this.sendTime)}ms]`);
                 this.eventBus.emit('buffersReady', {

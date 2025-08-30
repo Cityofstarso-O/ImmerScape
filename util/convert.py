@@ -51,7 +51,8 @@ if __name__ == "__main__":
         dest="name",
         type=str,
         default="",
-        help="scene name. Default: file name from input path"
+        help="scene name. \n\
+            Default: file name from input path"
     )
 
     parser.add_argument(
@@ -59,7 +60,9 @@ if __name__ == "__main__":
         dest="reorder",
         type=str,
         default="Morton",
-        help="reorder using 'Morton' or 'Hilbert' curve"
+        help="reorder using 'Morton' or 'Hilbert' curve. \n\
+            'Morton' is quick while 'Hilbert' might take a while but brings better quality\n\
+            Default: Morton"
     )
 
     parser.add_argument(
@@ -68,7 +71,8 @@ if __name__ == "__main__":
         type=int,
         choices=range(0, 4),
         default=0,
-        help="Compression Level:\n0: high quality\n1: medium quality\n2: low quality\n"
+        help="[deprecated]\n\
+            Compression Level:\n0: high quality\n1: medium quality\n2: low quality\n"
     )
 
     parser.add_argument(

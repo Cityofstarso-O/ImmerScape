@@ -4,6 +4,7 @@ export class GSSorter {
     constructor(options, eventBus) {
         this.sharedMemoryForWorkers = options.sharedMemoryForWorkers;
         this.enableSIMDInSort = options.enableSIMDInSort;
+        this.enableDebugOutput = options.enableDebugOutput;
 
         this.worker = new Worker(new URL('./SortWorker.js', import.meta.url), { type: 'module' });
         this.sourceWasm = '';
@@ -58,10 +59,9 @@ export class GSSorter {
         }/*, [data.sortBuffer]*/);
     }
 
-    sort(mvpMatrix, sceneScale, cameraPositionArray, timestamp, sortForFirstFrame) {
+    sort(mvpMatrix, cameraPositionArray, timestamp, sortForFirstFrame) {
         const sortMessage = {
             'modelViewProj': mvpMatrix.elements,
-            'sceneScale': sceneScale,
             'cameraPosition': cameraPositionArray,
             'timestamp': sortForFirstFrame ? 0 : timestamp,
         };
@@ -104,10 +104,12 @@ export class GSSorter {
                 this.lastSortTime = e.data.sortTime;
                 this.lastCullTime = e.data.cullTime;
                 this.sortRunning = false;
-                console.log(`visible: ${this.splatSortCount}/${this.splatCount} (${(this.splatSortCount/this.splatCount*100).toFixed(2)}%)`,  
-                    `cullTime: ${this.lastCullTime.toFixed(2)}ms`,
-                    `sortTime: ${this.lastSortTime.toFixed(2)}ms`
-                );
+                if (this.enableDebugOutput) {
+                    console.log(`visible: ${this.splatSortCount}/${this.splatCount} (${(this.splatSortCount/this.splatCount*100).toFixed(2)}%)`,  
+                        `cullTime: ${this.lastCullTime.toFixed(2)}ms`,
+                        `sortTime: ${this.lastSortTime.toFixed(2)}ms`
+                    );
+                }
             } else if (e.data.sortCanceled) {
                 this.sortRunning = false;
             } else if (e.data.sortSetupPhase1Complete) {
