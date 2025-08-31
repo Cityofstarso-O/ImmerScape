@@ -270,7 +270,7 @@ export class Utils {
     }();
 
     static computeTexSize(texelNum) {
-        const log2TexelNum = Math.max(Math.ceil(Math.log2(texelNum)), 0);
+        let log2TexelNum = Math.max(Math.ceil(Math.log2(texelNum)), 0);
         if (log2TexelNum > 24) {
             console.warn(`texelNum ${texelNum} exceeds maximum 4096 * 4096 and was clamped to maximum`);
             log2TexelNum = 24;

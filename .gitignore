@@ -9,3 +9,5 @@ dist
 scenes
 /*.zip
 __pycache__
+*.pem
+vite.config.js
