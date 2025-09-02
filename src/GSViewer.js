@@ -389,6 +389,7 @@ export default class GSViewer {
             this.__updateCyclopeanCamera(pose);
             this.__runSplatSort(this.gsScene.forceSort(), false, true);
             this.__updateForRendererSizeChanges();
+            this.webxr.updateControllers(xrFrame);
 
             if (this.__shouldRender()) {
                 this.graphicsAPI.bindFrameBuffer(this.webxr.framebuffer);

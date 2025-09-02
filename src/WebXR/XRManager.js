@@ -4,8 +4,12 @@
 // input
 // move
 
-export class XRManager {
+import { EventDispatcher, WebXRController } from "three";
+import * as THREE from "three";
+
+export class XRManager extends EventDispatcher {
     constructor(eventBus, canvas, graphicsAPI) {
+        super();
         this.eventBus = eventBus;
         this.canvas = canvas;
         this.graphicsAPI = graphicsAPI;
@@ -26,10 +30,25 @@ export class XRManager {
         this.running = false;
         this.sessionType = null;
 
+        // objects
         this.xrSession = null;
         this.xrLayer = null;
         this.baseReferenceSpace = null;
         this.userReferenceSpace = null;
+
+        // hand
+        this.enableHandTracking = false;
+        this.controllers = [];
+        this.controllerInputSources = [];
+
+        this.virtualScene = new THREE.Scene();
+        this.virtualScene.add(this.getHand(0));
+        this.virtualScene.add(this.getHand(1));
+
+
+        this.onSessionEnd = this.onSessionEnd.bind(this);
+        this.onInputSourcesChange = this.onInputSourcesChange.bind(this);
+        this.onSessionEvent = this.onSessionEvent.bind(this);
 
         this.checkEnv();
     }
@@ -40,6 +59,7 @@ export class XRManager {
     get isVR() { return Boolean(this.sessionType === 'immersive-vr'); }
     get isAR() { return Boolean(this.sessionType === 'immersive-ar'); }
 
+    get inputSources() { return this.xrSession.inputSources; }
     get depthNear() { return this.xrSession.renderState.depthNear; }
     get depthFar() { return this.xrSession.renderState.depthFar; }
 
@@ -69,6 +89,114 @@ export class XRManager {
 
         this.graphicsAPI.updateClearColor(r, g, b, a, clearColor, true);
     }
+
+    updateControllers(frame) {
+        for ( let i = 0; i < this.controllers.length; i ++ ) {
+			const inputSource = this.controllerInputSources[ i ];
+			const controller = this.controllers[ i ];
+			if ( inputSource !== null && controller !== undefined ) {
+				controller.update(inputSource, frame, this.userReferenceSpace);
+			}
+		}
+    }
+
+    getHand(index) {
+		let controller = this.controllers[index];
+		if (!controller) {
+			controller = new WebXRController();
+			this.controllers[index] = controller;
+		}
+		return controller.getHandSpace();
+	}
+
+    getController( index ) {
+		let controller = this.controllers[ index ];
+		if ( controller === undefined ) {
+			controller = new WebXRController();
+			this.controllers[ index ] = controller;
+		}
+		return controller.getTargetRaySpace();
+	};
+
+	getControllerGrip( index ) {
+		let controller = this.controllers[ index ];
+		if ( controller === undefined ) {
+			controller = new WebXRController();
+			this.controllers[ index ] = controller;
+		}
+		return controller.getGripSpace();
+	}
+
+    onInputSourcesChange( event ) {
+		// Notify disconnected
+		for ( let i = 0; i < event.removed.length; i ++ ) {
+			const inputSource = event.removed[ i ];
+			const index = this.controllerInputSources.indexOf( inputSource );
+			if ( index >= 0 ) {
+				this.controllerInputSources[ index ] = null;
+				this.controllers[ index ].disconnect( inputSource );
+			}
+		}
+		// Notify connected
+		for ( let i = 0; i < event.added.length; i ++ ) {
+			const inputSource = event.added[ i ];
+			let controllerIndex = this.controllerInputSources.indexOf( inputSource );
+			if ( controllerIndex === -1 ) {
+				// Assign input source a controller that currently has no input source
+				for ( let i = 0; i < this.controllers.length; i ++ ) {
+					if ( i >= this.controllerInputSources.length ) {
+						this.controllerInputSources.push( inputSource );
+						controllerIndex = i;
+						break;
+					} else if ( this.controllerInputSources[ i ] === null ) {
+						this.controllerInputSources[ i ] = inputSource;
+						controllerIndex = i;
+						break;
+					}
+				}
+				// If all controllers do currently receive input we ignore new ones
+				if ( controllerIndex === -1 ) break;
+			}
+			const controller = this.controllers[ controllerIndex ];
+			if ( controller ) {
+				controller.connect( inputSource );
+			}
+		}
+	}
+
+    onSessionEnd(event) {
+        this.running = false;
+        this.sessionType = null;
+        // objects
+        this.xrSession.removeEventListener('select',       this.onSessionEvent);
+		this.xrSession.removeEventListener('selectstart',  this.onSessionEvent);
+		this.xrSession.removeEventListener('selectend',    this.onSessionEvent);
+		this.xrSession.removeEventListener('squeeze',      this.onSessionEvent);
+		this.xrSession.removeEventListener('squeezestart', this.onSessionEvent);
+		this.xrSession.removeEventListener('squeezeend',   this.onSessionEvent);
+        this.xrSession.removeEventListener('end', this.onSessionEnd);
+		this.xrSession.removeEventListener('inputsourceschange', this.onInputSourcesChange);
+        this.xrSession = null;
+        this.xrLayer = null;
+        this.baseReferenceSpace = null;
+        this.userReferenceSpace = null;
+        // hand
+        this.enableHandTracking = false;
+
+        this.eventBus.emit('xrSessionEnd', {});
+    }
+
+    onSessionEvent(event) {
+		const controllerIndex = this.controllerInputSources.indexOf( event.inputSource );
+		if ( controllerIndex === -1 ) {
+			return;
+		}
+		const controller = this.controllers[ controllerIndex ];
+		if ( controller !== undefined ) {
+			controller.update(event.inputSource, event.frame, this.userReferenceSpace);
+			controller.dispatchEvent( { type: event.type, data: event.inputSource } );
+		}
+	}
 
     async checkEnv() {
         this.env.gpu = this.parseGpuString(this.graphicsAPI.getGPU());
@@ -134,19 +262,20 @@ export class XRManager {
 
         this.xrSession = await navigator.xr.requestSession(sessionToRequest, {
             requiredFeatures: ["local"],
-            optionalFeatures: []
+            optionalFeatures: ['hand-tracking'],
         });
         this.sessionType = sessionType;
         await this.accessObjectsFromSession();
 
-        this.xrSession.addEventListener('end', () => {
-            this.running = false;
-            this.xrSession = null;
-            this.sessionType = null;
-            this.baseReferenceSpace = null;
-            this.userReferenceSpace = null;
-            this.eventBus.emit('xrSessionEnd', {});
-        });
+        this.xrSession.addEventListener('select',       this.onSessionEvent);
+		this.xrSession.addEventListener('selectstart',  this.onSessionEvent);
+		this.xrSession.addEventListener('selectend',    this.onSessionEvent);
+		this.xrSession.addEventListener('squeeze',      this.onSessionEvent);
+		this.xrSession.addEventListener('squeezestart', this.onSessionEvent);
+		this.xrSession.addEventListener('squeezeend',   this.onSessionEvent);
+        this.xrSession.addEventListener('end', this.onSessionEnd);
+        this.xrSession.addEventListener('inputsourceschange', this.onInputSourcesChange);
+
         this.running = true;
         console.log(`Successfully enter ${this.sessionType}`);
         return true;
@@ -159,6 +288,8 @@ export class XRManager {
 
         const transform = new XRRigidTransform({ x: 0, y: 0, z: -2 }, { x: 1, y: 0, z: 0, w: 0 });
         this.userReferenceSpace = this.baseReferenceSpace.getOffsetReferenceSpace(transform);
+
+        this.enableHandTracking = this.enabledFeatures.includes('hand-tracking');
     }
 
     frameRateControl = function() {

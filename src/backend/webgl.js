@@ -371,6 +371,15 @@ export class WebGL {
         };
     }
 
+    createAndBindBuffer(target, data, location, size, type) {
+        const gl = this.graphicsAPI;
+		const buffer = gl.createBuffer(); 
+		gl.bindBuffer(target, buffer); 
+		gl.bufferData(target, data, gl.STATIC_DRAW); 
+		gl.enableVertexAttribArray(location); 
+		gl.vertexAttribPointer(location, size, type, false, 0, 0); 
+    }
+
     deleteVAO(vao) {
         const gl = this.graphicsAPI;
         if (vao) {
