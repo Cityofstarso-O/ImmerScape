@@ -3,7 +3,7 @@
 TODO
 test
 test.html
-*.png
+./*.png
 node_modules
 dist
 scenes
