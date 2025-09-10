@@ -11,10 +11,11 @@ export class GSSorter {
         this.ready = false;
         this.sortRunning = false;
         this.chunkBased = false;
-        this.sortForFirstFrame = false;
+        this.sortForSkipFrame = false;
 
         this.splatSortCount = 0;
-        this.splatCount = 0;
+        this.splatCount = 0;    // max capacity
+        this.currentSplatCount = 0;     // splat count of current scene (might be less than this.splatCount)
 
         this.lastSortTime = 0;
         this.lastCullTime = 0;
@@ -38,32 +39,48 @@ export class GSSorter {
     }
 
     async onBuffersReady({ data, sceneName }) {
-        this.ready = false;
-        this.chunkBased = Boolean(data.chunkBased);
-        this.splatCount = data.num;
-        this.initSorter(this.splatCount);
+        const sceneType = data.sceneType;
+        if (sceneType.virtualSequentialThreeD) {
+            return;
+        }
+        this.chunkBased = Boolean(data.chunkBased) && (!data.sequential);
+        this.currentSplatCount = data.num;
+
+        // we allocate space for all splats on texture if chunk-based
+        let splatCapacityRequired = this.currentSplatCount;
+        if (data.chunkResolution) {
+            splatCapacityRequired = data.chunkResolution.width * data.chunkResolution.height * 256;
+        }
+
+        const refreshOnly = splatCapacityRequired <= this.splatCount;
+        if (!refreshOnly) {
+            this.ready = false;
+            this.splatCount = splatCapacityRequired;
+            this.initSorter(this.splatCount);
+        }
 
         this.worker.postMessage({
             'init': {
+                'refreshOnly': refreshOnly,
                 'sorterWasmUrl': this.sourceWasm,
-                'splatCount': this.splatCount,
+                'splatCount': this.currentSplatCount,
                 'useSharedMemory': this.sharedMemoryForWorkers,
                 'distanceMapRange': 1 << 16,
                 'centers': data.sortBuffer,
                 'gsType': GSType[data.gsType],
-                'chunkBased': this.chunkBased,
+                'chunkBased': this.chunkBased,  // whether enable BVH culling(even it's chunkBased, u can diable it)
                 'chunks': data.chunkBuffer,
                 'chunkNum': data.chunkNum,
-                'chunkResolution': this.chunkBased ? data.chunkResolution : null,
+                'chunkResolution': data.chunkResolution,    // if the scene is chunkBased, this must be valid
             }
         }/*, [data.sortBuffer]*/);
     }
 
-    sort(mvpMatrix, cameraPositionArray, timestamp, sortForFirstFrame) {
+    sort(mvpMatrix, cameraPositionArray, timestamp, sortForSkipFrame) {
         const sortMessage = {
             'modelViewProj': mvpMatrix.elements,
             'cameraPosition': cameraPositionArray,
-            'timestamp': sortForFirstFrame ? 0 : timestamp,
+            'timestamp': sortForSkipFrame ? 0 : timestamp,
         };
         // NOTE: when rendering 4dgs, we should always sort for current timestamp.
         // when sharedMemory is not available and the scene is large, 
@@ -80,8 +97,8 @@ export class GSSorter {
         this.worker.postMessage({
             'sort': sortMessage
         }, transferables);
-        if (sortForFirstFrame) {
-            this.sortForFirstFrame = true;
+        if (sortForSkipFrame) {
+            this.sortForSkipFrame = true;
         }
     }
 
@@ -95,9 +112,9 @@ export class GSSorter {
 
                     const sortedIndexes = this.sortWorkerSortedIndexes.slice(0, e.data.splatSortCount);
                     this.eventBus.emit('sortDone', sortedIndexes);
-                    if (this.sortForFirstFrame) {
-                        this.eventBus.emit('sortForFirstFrameDone', {});
-                        this.sortForFirstFrame = false;
+                    if (this.sortForSkipFrame) {
+                        this.eventBus.emit('sortForSkipFrameDone', {});
+                        this.sortForSkipFrame = false;
                     }
                 }
                 this.splatSortCount = e.data.splatSortCount;

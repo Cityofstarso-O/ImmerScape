@@ -70,10 +70,12 @@ export default class GSViewer {
         this.direction = new THREE.Vector3();
         this.isLeftMouseDown = false;
 
-        this.sortForFirstFrame = false;
-        this.eventBus.on('sortForFirstFrameDone', this.__onSortForFirstFrameDone.bind(this));
+        this.sortForSkipFrame = false;
+        this.skipTimestamps = [];
+        this.eventBus.on('sortForSkipFrameDone', this.__onSortForSkipFrameDone.bind(this));
         this.startTime = performance.now();
         this.loopedTime = 0;
+        this.videoDuration = 1;
         this.lastFPSTime = 0;
         this.frameCount = 0;
         this.fps = 30;
@@ -112,11 +114,14 @@ export default class GSViewer {
     }
 
     setTimestamp(timestamp) {
-        this.loopedTime = timestamp;
+        this.skipTimestamps.push(timestamp);
+        if (this.skipTimestamps.length === 3) {
+            this.skipTimestamps.shift();
+        }
     }
 
     playFromStart() {
-        this.sortForFirstFrame = true;
+        this.setTimestamp(0);
     }
 
     setPlaybackSpeed(speed) {
@@ -128,7 +133,7 @@ export default class GSViewer {
     }
 
     exportGlbFile() {
-        GSLoader.exportGlbFile(this.gsScene.modifyGlbJson(), this.gsScene.getCurrentScene('name') + '.glb');
+        this.gsScene.export();
     }
 
     setControlMode(mode) {
@@ -226,7 +231,7 @@ export default class GSViewer {
     }
 
     getSplatNum() {
-        return this.gsScene.getSplatNum();
+        return this.gsScene.splatNum;
     }
 
     getLastSortTime() {
@@ -240,7 +245,7 @@ export default class GSViewer {
     getCullingPercentage() {    // which means visible splats number
         // trick: for static 3dgs scene, force to sort once per sec
         // this.__runSplatSort(true);
-        return this.sorter.getSplatSortCount() / this.gsScene.getSplatNum();
+        return this.sorter.getSplatSortCount() / this.gsScene.splatNum;
     }
 
     getResolution() {
@@ -337,9 +342,8 @@ export default class GSViewer {
         this.camera.up.copy(this.cameraUp).normalize();
         if (this.camera.controls.type === 'orbit') {
             this.controls.target.copy(this.initialCameraLookAt);
-        } else {
-            this.camera.lookAt(this.initialCameraLookAt);
         }
+        this.camera.lookAt(this.initialCameraLookAt);
     }
 
     run() {
@@ -352,7 +356,10 @@ export default class GSViewer {
             this.__runSplatSort(this.gsScene.forceSort());
             this.__updateForRendererSizeChanges();
             this.sceneHelper.update(currentTime, this.deltaT);
-
+            if (this.sortForSkipFrame) {
+                // skip rendering when sorting for the new frame to escape from flash
+                return;
+            }
             this.graphicsAPI.updateClearColor(this.backgroundColor[0], this.backgroundColor[1], this.backgroundColor[2], 1);
             this.graphicsAPI.updateViewport();
             if (this.showGrid) {
@@ -364,7 +371,7 @@ export default class GSViewer {
                 this.__updateUniforms();
 
                 if (this.options.debug) {
-                    this.graphicsAPI.drawInstanced('TRIANGLE_FAN', 0, 4, this.gsScene.getSplatNum(), this.shaderManager.debugTF);
+                    this.graphicsAPI.drawInstanced('TRIANGLE_FAN', 0, 4, this.gsScene.splatNum, this.shaderManager.debugTF);
                     this.shaderManager.debugLog();
                 }
                 this.graphicsAPI.drawInstanced('TRIANGLE_FAN', 0, 4, this.sorter.getSplatSortCount());
@@ -420,15 +427,18 @@ export default class GSViewer {
                 // these states only need to set once
                 this.graphicsAPI.setBlendState();
                 this.shaderManager.setPipeline();
-                this.shaderManager.updateUniformTextures(this.gsScene.getBuffers());
+                // this.gsScene.updateTextureBindings();
+                this.shaderManager.updateUniformTextures(this.gsScene.buffers);
                 this.shaderManager.updateUniforms(true);
+                this.gsScene.setSceneReady();
                 isSet = true;
                 this.eventBus.emit('noteExternalListener', {
                     sceneLoaded: true,
-                    uid: this.gsScene.getCurrentScene('uid'),
-                    name: this.gsScene.getCurrentScene('name'),
-                    transform: this.gsScene.getCurrentScene('transform'),
-                    gsType: GSType[this.gsScene.getCurrentScene('gsType')],
+                    uid: this.gsScene.currentScene.uid,
+                    name: this.gsScene.currentScene.name,   // do not use this.gsScene.name
+                    transform: this.gsScene.currentScene.transform,
+                    gsType: GSType[this.gsScene.currentScene.gsType],
+                    sequential: this.gsScene.currentScene.sequential,
                 });
             }
 
@@ -440,14 +450,22 @@ export default class GSViewer {
         }
     }();
 
-    __onSortForFirstFrameDone({}) {
-        this.sortForFirstFrame = false;
-        this.loopedTime = 0;
+    __onSortForSkipFrameDone({}) {
+        this.sortForSkipFrame = false;
+        this.loopedTime = this.skipTimestamps.shift() || 0;
     }
 
     __onBuffersReady({ data, sceneName }) {
+        const sceneType = data.sceneType;
+
         // we reset camera each time we switch scene
-        this.resetCamera();
+        if (!sceneType.generalSequentialThreeD) {
+            this.resetCamera();
+        } else {
+            // to trigger for sorting for skip frame
+            // so we skip rendering new frame until sorting done
+            this.setTimestamp(this.gsScene.currentScene.currentFrame + 0.001)
+        }
         this.__shouldRender(true);
         this.__runSplatSort(false, true);
         
@@ -458,6 +476,28 @@ export default class GSViewer {
                 default: break;
             }
         }
+
+        if (sceneType.ThreeD) {
+            // currently all video duration is 1 sec
+            this.videoDuration = 1.0;
+            this.pause = true;
+            this.setTimestamp(0);
+        } else if (sceneType.STG) {
+            // currently all video duration is 1 sec
+            this.videoDuration = 1.0;
+            this.pause = false;
+            this.setTimestamp(0);
+        } else if (sceneType.virtualSequentialThreeD) {
+            this.videoDuration = data.frameNum;
+            this.pause = false;
+            this.setTimestamp(0);
+        }
+
+        this.eventBus.emit('noteExternalListener', {
+            updateTimestamp: true,
+            timestamp: this.loopedTime,
+            duration: this.videoDuration,
+        });
     }
 
     __onXrSessionEnd({}) {
@@ -498,7 +538,7 @@ export default class GSViewer {
                 //this.camera.updateMatrixWorld();
             }
             const projMat = proj || this.camera.projectionMatrix.elements;
-            newViewMatrix.copy(this.gsScene.getCurrentScene('modelMatrix'));
+            newViewMatrix.copy(this.gsScene.currentScene.modelMatrix);
             newViewMatrix.premultiply(Boolean(view) ? xrViewMatrix.fromArray(view) : this.camera.matrixWorldInverse);
 
             this.shaderManager.updateUniform('viewMatrix', newViewMatrix.elements);
@@ -535,7 +575,7 @@ export default class GSViewer {
             if (this.sorter.sortRunning) return Promise.resolve(true);
             // we sort all splats
             // culling on wasm if chunkBased, or we just sort all splats
-            if (this.gsScene.getSplatNum() <= 0) {
+            if (this.gsScene.splatNum <= 0) {
                 return Promise.resolve(false);
             }
             const camera = useCyclopeanCamera ? this.cyclopeanCamera : this.camera;
@@ -564,7 +604,7 @@ export default class GSViewer {
             // start to sort
             this.sorter.sortRunning = true;
 
-            mvpMatrix.copy(this.gsScene.getCurrentScene('modelMatrix'));
+            mvpMatrix.copy(this.gsScene.currentScene.modelMatrix);
             mvpMatrix.premultiply(camera.matrixWorldInverse);
             mvpMatrix.premultiply(camera.projectionMatrix);
 
@@ -572,7 +612,8 @@ export default class GSViewer {
             cameraPositionArray[1] = camera.position.y;
             cameraPositionArray[2] = camera.position.z;
 
-            this.sorter.sort(mvpMatrix, cameraPositionArray, this.loopedTime, this.sortForFirstFrame);
+            const timestamp = this.sortForSkipFrame ? (this.skipTimestamps[0] || 0) : this.loopedTime;
+            this.sorter.sort(mvpMatrix, cameraPositionArray, timestamp, this.sortForSkipFrame);
 
             lastSortViewPos.copy(camera.position);
             lastSortViewDir.copy(sortViewDir);
@@ -769,14 +810,22 @@ export default class GSViewer {
             // therefore, the rendering of the first frame may use the sorted indices of the last frame
             // which may cause inconsistency and flash
             // To solve this, we wait for the sorting for the first frame is done, meanwhile keep rendering the last frame
-            if (!this.sortForFirstFrame && this.loopedTime > 1) {
-                this.sortForFirstFrame = true;
+            if (!this.sortForSkipFrame && this.loopedTime > this.videoDuration) {
+                this.sortForSkipFrame = true;
             }
-            this.loopedTime = Math.min(1, this.loopedTime);
+            this.loopedTime = Math.min(this.videoDuration, this.loopedTime);
+
             this.eventBus.emit('noteExternalListener', {
                 updateTimestamp: true,
                 timestamp: this.loopedTime,
+                duration: this.videoDuration,
             });
+        }
+
+        // we also update current frame for sequential 3dgs, 'cause it's similar with this.loopedTime
+        this.gsScene.updateVirtualSequentialThreeDFrame(this.loopedTime);
+        if (!this.sortForSkipFrame && this.skipTimestamps[0] !== undefined) {
+            this.sortForSkipFrame = true;
         }
     }
 

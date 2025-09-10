@@ -434,7 +434,7 @@
                             </template>
                             <v-list density="compact">
                                 <v-list-item 
-                                    v-for="speed in [0.5, 1.0, 2.0]" 
+                                    v-for="speed in [0.5, 1.0, 2.0, 4.0, 8.0]" 
                                     :key="speed" 
                                     :title="`${speed.toFixed(1)}x`"
                                     @click="setPlaybackSpeed(speed)"
@@ -473,7 +473,7 @@
                                     :key="scene.uid"
                                     :title="scene.name"
                                     :active="scene.uid === selectedSceneUID"
-                                    @click="selectScene(scene.uid, scene.gsType)"
+                                    @click="selectScene(scene.uid, scene.gsType, scene.sequential)"
                                 >
                                     <template v-slot:append>
                                         <v-btn 
@@ -922,10 +922,12 @@
             };
             // scene manage
             const currentGSType = ref(2);
+            const isSceneSequential = ref(false);
             const sceneList = ref([]);
             const removeScene = (sceneId) => {
                 sceneList.value = sceneList.value.filter(scene => scene.uid !== sceneId);
                 currentGSType.value = 0;
+                isSceneSequential.value = false;
                 viewer.removeScene(sceneId);
             };
             const snackbar = reactive({
@@ -933,9 +935,15 @@
                 text: '',
             });
             const selectedSceneUID = ref('');
-            const selectScene = (uid, gsType) => {
+            const selectScene = (uid, gsType, sequential) => {
                 selectedSceneUID.value = uid;
                 currentGSType.value = gsType;
+                isSceneSequential.value = sequential;
+                if (gsType === 1 && !sequential) {
+                    timeline.isPlaying = true;
+                } else {
+                    timeline.isPlaying = false;
+                }
                 viewer.switchToScene(uid);
             };
             // selectedSceneTransform is reference to the internal transform object
@@ -1144,7 +1152,7 @@
             };
             // timeline
             const showTimeline = computed(() => {
-                return currentGSType.value === 2;
+                return currentGSType.value === 2 || (currentGSType.value === 1 && isSceneSequential.value);
             });
             const isDraggingTimelineSlider = ref(false);
             const timeline = reactive({
@@ -1195,6 +1203,7 @@
                     if (msg.updateTimestamp) {
                         if (!isDraggingTimelineSlider.value) {
                             timeline.currentTime = msg.timestamp;
+                            timeline.totalDuration = msg.duration;
                         }
                     } else if (msg.sceneLoaded) {
                         const exists = sceneList.value.some(scene => scene.uid === msg.uid);
@@ -1204,13 +1213,15 @@
                                 name: msg.name,
                                 transform: msg.transform,
                                 gsType: msg.gsType,
+                                sequential: msg.sequential,
                             });
                         }
                         currentGSType.value = msg.gsType;
+                        isSceneSequential.value = msg.sequential;
                         snackbar.show = false;
                         selectedSceneUID.value = msg.uid;
                     } else if (msg.startLoad) {
-                        snackbar.text = 'start to load...';
+                        snackbar.text = 'start to load: ' + msg.name;
                         snackbar.show = true;
                     } else if (msg.failLoad) {
                         snackbar.text = `fail to load: ${msg.error}`;
@@ -1272,7 +1283,7 @@
                 // cloud files
                 cloudSceneFiles, loadScene,
                 // scene manager
-                currentGSType, sceneList, removeScene, snackbar, selectedSceneUID, selectScene, 
+                currentGSType, isSceneSequential, sceneList, removeScene, snackbar, selectedSceneUID, selectScene, 
                 selectedSceneTransform, dragState, startDrag, onDrag, stopDrag, transformPanelKey, resetTransform, applyTransform,
                 // camera manager
                 isDragging, colorMenu, cameraSettings, resetCameraSettings, backgroundColorRGB, resetBackgroundColor,

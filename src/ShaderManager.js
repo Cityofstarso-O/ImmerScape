@@ -179,6 +179,10 @@ export class ShaderManager {
     }
 
     async onBuffersReady({ data, sceneName }) {
+        const sceneType = data.sceneType;
+        if (data.ready || sceneType.virtualSequentialThreeD) {
+            return;
+        }
         this.ready = false;
         // if we do not use cache, keep old key to delete later
         const oldKey = this.key;
@@ -196,6 +200,10 @@ export class ShaderManager {
         }
         const key = data.gsType + '/' + data.quality + '/' + data.chunkBased;
 
+        let allSplatsOnTexture = data.num;
+        if (data.chunkResolution) {
+            allSplatsOnTexture = data.chunkResolution.width * data.chunkResolution.height * 256;
+        }
         // if we have no cache for this program, build one
         if (!this.programs[key]) {
             const vs = this.createVS(data.buffers, gsKernel, data.chunkBased);
@@ -204,10 +212,10 @@ export class ShaderManager {
             //console.log(vs);
             //console.log(fs);
             this.createProgram(key, vs, fs, this.debug ? [this.debugTF.outName] : null);
-            this.vaos[key] = this.graphicsAPI.setupVAO(this.getAttribLoc(key, 'inPosition'), this.getAttribLoc(key, 'splatIndex'), data.num, this.vbo);
+            this.vaos[key] = this.graphicsAPI.setupVAO(this.getAttribLoc(key, 'inPosition'), this.getAttribLoc(key, 'splatIndex'), allSplatsOnTexture, this.vbo);
             this.vbo = this.vaos[key].vertexBuffer;
         } else {
-            this.graphicsAPI.rebuildInstanceBuffer2VAO(this.vaos[key], this.getAttribLoc(key, 'splatIndex'), data.num);
+            this.graphicsAPI.rebuildInstanceBuffer2VAO(this.vaos[key], this.getAttribLoc(key, 'splatIndex'), allSplatsOnTexture);
         }
         
         if (this.debug) {

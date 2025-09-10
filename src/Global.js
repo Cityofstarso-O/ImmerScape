@@ -20,10 +20,8 @@ export const GSType = {
 export const FileType = {
     'NONE': 0,
     'PLY': 1,
-    'SPLAT': 2,
-    'SPZ': 3,
-    'SPB': 4,
-    'GLB':5,
+    'SPB': 2,
+    'GLB': 3,
 };
 
 export const GraphicsApiType = {

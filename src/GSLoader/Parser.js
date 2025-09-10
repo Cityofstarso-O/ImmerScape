@@ -18,8 +18,6 @@ console.log('Worker: Parser.js module loaded successfully');
 const loadFromNative = function() {
     const map2FileType = {
         'ply': FileType.PLY,
-        'spz': FileType.SPZ,
-        'splat': FileType.SPLAT,
         'spb': FileType.SPB,
         'glb': FileType.GLB,
     }
@@ -86,6 +84,9 @@ self.onmessage = async (event) => {
                 if (results.data.chunkBased) {
                     transferables.push(results.data.chunkBuffer);
                 }
+                // property
+                results.data.sequential = message.sequential;
+                results.data.frameIdx = message.frameIdx;
                 self.postMessage({
                     'valid': results.valid,
                     'data': results.data,

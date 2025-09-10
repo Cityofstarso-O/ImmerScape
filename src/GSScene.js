@@ -16,22 +16,135 @@ export class GSScene {
         this.ready = false;
     }
 
-    getCurrentScene(property) {
-        return this.scenes[this.currentUID][property];
+    /**
+     * Scene Descriptor
+     * @param {Array<Object>} buffers descriptors of gaussian property buffers
+     * @param {string} chunkBased if the scene is chunk-based
+     * @param {ArrayBuffer} chunkBuffer use to generate BVH
+     * @param {number} chunkNum count of chunks
+     * @param {Object} chunkResolution { width, height }
+     * @param {Object} file descriptor of input file
+     * @param {string} gsType gaussian type
+     * @param {Object} modelMatrix
+     * @param {} appliedTransform
+     * @param {string} name
+     * @param {number} num
+     * @param {string} quality
+     * @param {ArrayBuffer} sortBuffer
+     * @param {Object} transform
+     * @param {string} uid
+     */
+
+    get currentScene() { return this.scenes[this.currentUID]; }
+    get actualCurrentScene() {
+        let currentScene = this.currentScene;
+
+        if (currentScene && currentScene.virtual) {
+            if (currentScene.sequential) {
+                const frameUID = currentScene.frames[currentScene.currentFrame];
+                currentScene = this.scenes[frameUID];
+            }
+        }
+        return currentScene;
+    }
+    // default to return actual current scene property
+    get splatNum() { return this.getSceneProperty(this.actualCurrentScene, 'num', 0); }
+    get buffers() { return this.getSceneProperty(this.actualCurrentScene, 'buffers', null); }
+    get name() { return this.getSceneProperty(this.actualCurrentScene, 'name', ''); }
+    get uid() { return this.getSceneProperty(this.actualCurrentScene, 'uid', ''); }
+    get transform() { return this.getSceneProperty(this.actualCurrentScene, 'transform', null); }
+    get gsType() { return this.getSceneProperty(this.actualCurrentScene, 'gsType', 'none'); }
+    get modelMatrix() { return this.getSceneProperty(this.actualCurrentScene, 'modelMatrix', null); }
+
+    getSceneProperty(scene, property, defaultVal) {
+        if (scene) {
+            return scene[property] || defaultVal;
+        }
+        return defaultVal;
+    }
+
+    updateTextureBindings() {
+        let uid = this.currentUID;
+        const currentScene = this.currentScene;
+        if (currentScene.virtual && currentScene.sequential) {
+            uid = currentScene.frames[currentScene.currentFrame];
+        }
+
+        this.setupTex(uid);
+    }
+
+    updateVirtualSequentialThreeDFrame(loopedTime) {
+        const scene = this.currentScene;
+        if (scene && scene.sceneType.virtualSequentialThreeD) {
+            const lastFrameIdx = scene.currentFrame;
+            const currentFrameIdx = Math.floor(loopedTime) % scene.frameNum;
+            
+            if (currentFrameIdx !== lastFrameIdx && scene.prepared && this.ready) {
+                scene.currentFrame = currentFrameIdx;
+                const frameScene = this.scenes[scene.frames[scene.currentFrame]];
+                this.eventBus.emit('buffersReady', {
+                    data: frameScene,
+                    sceneName: frameScene.name,
+                });
+            }
+        }
+    }
+
+    setSceneReady() {
+        // prepared: declare whether the scene is prepared by GSScene, GSSorter, ShaderManager through 'buffersReady' event.
+        const currentScene = this.currentScene;
+        const sceneType = currentScene.sceneType;
+        if (sceneType.ThreeD || sceneType.STG) {
+            currentScene.prepared = true;
+        } else if (sceneType.virtualSequentialThreeD) {
+            currentScene.prepared = true;
+            for (const subScene of currentScene.frames) {
+                this.scenes[subScene].prepared = true;
+            }
+        }
     }
 
     async onBuffersReady({ data, sceneName }) {
-        this.ready = false;
         const uid = data.uid;
         this.scenes[uid] = data;
-        this.setupTex(uid);
 
-        // set state: new scene is ready
-        const oldUID = this.currentUID;
-        this.currentUID = uid;
-        this.ready = true;
-        if (this.destroyOnLoad && (oldUID !== this.currentUID)) {
-            this.removeScene(oldUID);
+        const sceneType = data.sceneType;
+        if (sceneType.ThreeD || sceneType.STG) {
+            this.ready = false;
+            this.setupTex(uid);
+
+            const oldUID = this.currentUID;
+            this.currentUID = uid;
+            this.ready = true;
+            if (this.destroyOnLoad && (oldUID !== this.currentUID)) {
+                this.removeScene(oldUID);
+            }
+        } else if (sceneType.virtualSequentialThreeD) {
+            if (!data.prepared) {
+                this.ready = false;
+            }
+
+            // set state: new scene is ready
+            const oldUID = this.currentUID;
+            this.currentUID = uid;
+            if (this.destroyOnLoad && (oldUID !== this.currentUID)) {
+                this.removeScene(oldUID);
+            }
+        } else if (sceneType.generalSequentialThreeD) {
+            const loaded = Boolean(this.currentScene.frames[data.frameIdx - this.currentScene.startFrameIdx]);
+            if (loaded) {
+                this.setupTex(uid);
+            } else {
+                this.ready = false;
+                this.setupTex(uid);
+                this.currentScene.frames[data.frameIdx - this.currentScene.startFrameIdx] = uid;
+                // 'cause we load the sequence reversely
+                if (data.frameIdx == this.currentScene.startFrameIdx) {
+                    this.currentScene.appliedTransform.copy(data.appliedTransform);
+                    this.currentScene.modelMatrix.copy(data.modelMatrix);
+                    this.ready = true;
+                }
+            }
         }
     }
 
@@ -51,13 +164,19 @@ export class GSScene {
     async destoryOldScene(oldScene) {
         if (oldScene) {
             const scene = this.scenes[oldScene];
-            Object.values(scene.buffers).forEach(value => {
-                this.graphicsAPI.deleteTexture(value.texture);
-                value.buffer = null;
-                value.texture = null;
-            });
-            scene.file.data = null;
-
+            const sceneType = scene.sceneType;
+            if (sceneType.virtualSequentialThreeD) {
+                for (const oldGeneralSequentialThreeD of scene.frames) {
+                    this.destoryOldScene(oldGeneralSequentialThreeD);
+                }
+            } else {
+                Object.values(scene.buffers).forEach(value => {
+                    this.graphicsAPI.deleteTexture(value.texture);
+                    value.buffer = null;
+                    value.texture = null;
+                });
+                scene.file.data = null;
+            }
             delete this.scenes[oldScene];
         }
         if (this.enableDebugOutput) {
@@ -73,10 +192,15 @@ export class GSScene {
     }
 
     switchToScene(uid) {
-        this.eventBus.emit('buffersReady', {
-            data: this.scenes[uid],
-            sceneName: this.scenes[uid].name,
-        })
+        const scene = this.scenes[uid];
+        
+        if (scene) {
+            this.eventBus.emit('buffersReady', {
+                data: scene,
+                sceneName: scene.name,
+            });
+        }
+        
     }
 
     updateTransform = function() {
@@ -130,21 +254,25 @@ export class GSScene {
     }
 
     forceSort() {
-        if (this.ready && this.currentUID) {
-            return this.scenes[this.currentUID].gsType === 'SPACETIME';
+        const currentScene = this.currentScene;
+        if (this.ready && currentScene) {
+            const virtualSequentialThreeD = currentScene.virtual && currentScene.sequential;
+            return currentScene.gsType === 'SPACETIME' || virtualSequentialThreeD;
         }
         return false;
     }
 
-    getSplatNum() {
-        if (this.currentUID && this.scenes[this.currentUID]) {
-            return this.scenes[this.currentUID].num;
+    export() {
+        const scene = this.currentScene;
+        const sceneType = scene.sceneType;
+        if (sceneType.ThreeD || sceneType.STG) {
+            GSScene.exportGlbFile(this.modifyGlbJson(scene), this.name + '.glb');
+        } else if (sceneType.virtualSequentialThreeD) {
+            for (const subSceneUID of scene.frames) {
+                const subScene = this.scenes[subSceneUID];
+                GSScene.exportGlbFile(this.modifyGlbJson(subScene, scene.modelMatrix), subScene.name + '.glb');
+            }
         }
-        return 0;
-    }
-
-    getBuffers() {
-        return this.scenes[this.currentUID].buffers;
     }
 
     static debugUnpackBuffer(buffers, idx = 0) {
@@ -166,8 +294,31 @@ export class GSScene {
         )
     }
 
-    modifyGlbJson() {
-        const scene = this.scenes[this.currentUID];
+    static exportGlbFile(buffer, fileName) {
+        // 1. 从 ArrayBuffer 创建一个 Blob
+        const blob = new Blob([buffer], { type: 'model/gltf-binary' });
+
+        // 2. 为 Blob 创建一个临时的 URL
+        const url = URL.createObjectURL(blob);
+
+        // 3. 创建一个隐藏的下载链接并配置它
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = fileName; // 设置下载文件名
+        
+        // 4. 将链接添加到文档中，模拟点击，然后移除
+        document.body.appendChild(a);
+        a.click();
+        
+        // 5. 清理：等待片刻后移除链接并释放 URL
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 100);
+    }
+
+    modifyGlbJson(scene, modelMatrix = null) {
         const originalGlbBuffer = scene.file.data;
 
         const dataView = new DataView(originalGlbBuffer);
@@ -208,7 +359,7 @@ export class GSScene {
         let json = JSON.parse(jsonString);
 
         // 调用用户提供的函数来修改 JSON
-        json.nodes[0].matrix = scene.modelMatrix.toArray();
+        json.nodes[0].matrix = (modelMatrix || scene.modelMatrix).toArray();
 
         // --- 步骤 3: 重新编码新的 JSON 数据 ---
 

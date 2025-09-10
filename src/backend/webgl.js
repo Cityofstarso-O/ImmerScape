@@ -299,25 +299,32 @@ export class WebGL {
         };
     }
 
-    rebuildInstanceBuffer2VAO(vertexInput, instanceIndexLocation, splatCount) {
-        const gl = this.graphicsAPI;
-        gl.deleteBuffer(vertexInput.instanceIndexBuffer);
+    rebuildInstanceBuffer2VAO = function() {
+        let splatCapacity = 0;
+        return function(vertexInput, instanceIndexLocation, splatCount){
+            if (splatCount <= splatCapacity) {
+                return;
+            }
+            splatCapacity = splatCount;
+            const gl = this.graphicsAPI;
+            gl.deleteBuffer(vertexInput.instanceIndexBuffer);
 
-        const newInstanceIndexBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, newInstanceIndexBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, splatCount * Uint32Array.BYTES_PER_ELEMENT, gl.DYNAMIC_DRAW);
+            const newInstanceIndexBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, newInstanceIndexBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, splatCapacity * Uint32Array.BYTES_PER_ELEMENT, gl.DYNAMIC_DRAW);
 
-        gl.bindVertexArray(vertexInput.vao);
-        gl.bindBuffer(gl.ARRAY_BUFFER, newInstanceIndexBuffer);
-        gl.enableVertexAttribArray(instanceIndexLocation);
-        gl.vertexAttribIPointer(instanceIndexLocation, 1, gl.UNSIGNED_INT, 0, 0);
-        gl.vertexAttribDivisor(instanceIndexLocation, 1);
+            gl.bindVertexArray(vertexInput.vao);
+            gl.bindBuffer(gl.ARRAY_BUFFER, newInstanceIndexBuffer);
+            gl.enableVertexAttribArray(instanceIndexLocation);
+            gl.vertexAttribIPointer(instanceIndexLocation, 1, gl.UNSIGNED_INT, 0, 0);
+            gl.vertexAttribDivisor(instanceIndexLocation, 1);
 
-        gl.bindVertexArray(null);
-        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+            gl.bindVertexArray(null);
+            gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
-        vertexInput.instanceIndexBuffer = newInstanceIndexBuffer;
-    }
+            vertexInput.instanceIndexBuffer = newInstanceIndexBuffer;
+        }
+    } ()
 
     setupLineVAO(pos, color) {
         const gl = this.graphicsAPI;

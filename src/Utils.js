@@ -323,6 +323,32 @@ export class Utils {
         return atan;
     }
 
+    static getSceneType = function() {
+        const type  = {
+            ThreeD: false,
+            STG: false,
+            generalSequentialThreeD: false,
+            virtualSequentialThreeD: false,
+        }
+        return function(data) {
+            const res = {...type};
+            if (data.sequential) {
+                if (data.virtual) {
+                    res.virtualSequentialThreeD = true;
+                } else {
+                    res.generalSequentialThreeD = true;
+                }
+            } else {
+                if (data.gsType === "ThreeD") {
+                    res.ThreeD = true;
+                } else if (data.gsType === "SPACETIME") {
+                    res.STG = true;
+                }
+            }
+            return res;
+        };
+    } ()
+
     static hex2rgb(hex_) {
         const hex = hex_.slice(1);
         const r = parseInt(hex.substring(0, 2), 16);
@@ -339,6 +365,57 @@ export class Utils {
         const fileNameWithExtension = fileName.split('/').pop().split('\\').pop();
         const name = fileNameWithExtension.split('.').slice(0, -1).join('.');
         return name;
+    }
+
+    static isFrameIdxSequential(files) {
+        if (files.length <= 1) {
+            return { isSequential: true, startFrame: files.length > 0 ? files[0].frameIdx : null };
+        }
+
+        const startFrame = files[0].frameIdx;
+
+        for (let i = 1; i < files.length; i++) {
+            if (files[i].frameIdx !== files[i - 1].frameIdx + 1) {
+                return { isSequential: false, startFrame: startFrame };
+            }
+        }
+
+        return { isSequential: true, startFrame: startFrame };
+    }
+
+    static extractFileNameIdx = function() {
+        const regex = /(\d+)$/;
+        let match;
+        let number;
+        return function(filename) {
+            match = regex.exec(filename);
+            number = match ? parseInt(match[1]) : -1;
+            return number;
+        };
+    } ()
+
+    static getAllEntries(directoryReader) {
+        return new Promise(resolve => {
+            const entries = [];
+            const readEntries = () => {
+                directoryReader.readEntries(newEntries => {
+                    if (newEntries.length === 0) {
+                        resolve(entries);
+                    } else {
+                        entries.push(...newEntries);
+                        readEntries();
+                    }
+                });
+            };
+            readEntries();
+        });
+    }
+
+    static async readFirstLevelDirectory(directoryEntry) {
+        const directoryReader = directoryEntry.createReader();
+        const entries = await Utils.getAllEntries(directoryReader);
+
+        return entries;
     }
 
     static isIOS() {

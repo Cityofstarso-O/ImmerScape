@@ -69,19 +69,43 @@ function sort(modelViewProj, timestamp) {
     self.postMessage(sortMessage, transferables);
 }
 
+let isProcessing = false;
+const messageQueue = [];
+
+async function handleMessageQueue() {
+    if (isProcessing) {
+        return; // 如果正在处理，则退出
+    }
+
+    isProcessing = true;
+
+    while (messageQueue.length > 0) {
+        const message = messageQueue.shift();
+        await processMessage(message);
+    }
+    
+    isProcessing = false;
+}
+
 self.onmessage = async (e) => {
-    if (e.data.sort) {
+    messageQueue.push(e.data);
+    handleMessageQueue();
+};
+
+async function processMessage(msg) {
+    if (msg.sort) {
         if (!useSharedMemory) {
-            transferablesortedIndexesOut = e.data.sort.sortedIndexes;
+            transferablesortedIndexesOut = msg.sort.sortedIndexes;
         }
-        sort(e.data.sort.modelViewProj, e.data.sort.timestamp);
-    } else if (e.data.init) {
-        if (wasmInstance || wasmMemory) {
+        sort(msg.sort.modelViewProj, msg.sort.timestamp);
+    } else if (msg.init) {
+        const data = msg.init;
+        const refreshOnly = data.refreshOnly;
+        if (!refreshOnly && (wasmInstance || wasmMemory)) {
             wasmInstance = null;
             wasmMemory = null;
         }
 
-        const data = e.data.init;
         // Yep, this is super hacky and gross :(
         splatCount = data.splatCount;
         useSharedMemory = data.useSharedMemory;
@@ -92,15 +116,15 @@ self.onmessage = async (e) => {
         if (chunkBased) {
             bvhNodes = buildBVH(new Float32Array(data.chunks), gsType === 2);
         }
-        let allSplatsOnTexture = splatCount;
         if (data.chunkResolution) {
-            allSplatsOnTexture = data.chunkResolution.width * data.chunkResolution.height * 256;
+            // splat index is not of consistency if chunkBased, so we need to use all splats on the texture
+            splatCount = data.chunkResolution.width * data.chunkResolution.height * 256;
         }
-        const CENTERS_BYTES_PER_ENTRY = data.centers.byteLength / allSplatsOnTexture;
+        const CENTERS_BYTES_PER_ENTRY = 13 * 4;
         const matrixSize = 16 * Constants.BytesPerFloat;
 
         const memoryRequiredForIndexesToSort = splatCount * Constants.BytesPerInt;
-        const memoryRequiredForCenters = allSplatsOnTexture * CENTERS_BYTES_PER_ENTRY;
+        const memoryRequiredForCenters = splatCount * CENTERS_BYTES_PER_ENTRY;
         const memoryRequiredForModelViewProjectionMatrix = matrixSize;
         const memoryRequiredForMappedDistances = splatCount * Constants.BytesPerInt;
         const memoryRequiredForIntermediateSortBuffers = distanceMapRange * Constants.BytesPerInt;
@@ -117,29 +141,6 @@ self.onmessage = async (e) => {
                                     extraMemory;
         const totalPagesRequired = Math.floor(totalRequiredMemory / Constants.MemoryPageSize ) + 1;
 
-        const memory = new WebAssembly.Memory({
-            initial: totalPagesRequired,
-            maximum: totalPagesRequired,
-            shared: useSharedMemory, // Use the flag here
-        });
-
-        const sorterWasmImport = {
-            module: {},
-            env: { memory: memory }
-        };
-
-        // Efficiently load the Wasm module from the provided URL
-        try {
-            const { instance } = await WebAssembly.instantiateStreaming(fetch(data.sorterWasmUrl), sorterWasmImport);
-            wasmInstance = instance;
-        } catch (error) {
-            // Fallback for browsers that don't support instantiateStreaming (e.g., some Safari versions)
-            const response = await fetch(data.sorterWasmUrl);
-            const wasmBytes = await response.arrayBuffer();
-            const wasmModule = await WebAssembly.compile(wasmBytes);
-            wasmInstance = await WebAssembly.instantiate(wasmModule, sorterWasmImport);
-        }
-
         indexesToSortOffset = 0;
         centersOffset = indexesToSortOffset + memoryRequiredForIndexesToSort;
         modelViewProjOffset = centersOffset + memoryRequiredForCenters;
@@ -147,7 +148,32 @@ self.onmessage = async (e) => {
         frequenciesOffset = mappedDistancesOffset + memoryRequiredForMappedDistances;
         sortedIndexesOffset = frequenciesOffset + memoryRequiredForIntermediateSortBuffers;
         debugOffset = sortedIndexesOffset + memoryRequiredForSortedIndexes;
-        wasmMemory = sorterWasmImport.env.memory.buffer;
+
+        if (!refreshOnly) {    
+            const memory = new WebAssembly.Memory({
+                initial: totalPagesRequired,
+                maximum: totalPagesRequired,
+                shared: useSharedMemory, // Use the flag here
+            });
+
+            const sorterWasmImport = {
+                module: {},
+                env: { memory: memory }
+            };
+
+            // Efficiently load the Wasm module from the provided URL
+            try {
+                const { instance } = await WebAssembly.instantiateStreaming(fetch(data.sorterWasmUrl), sorterWasmImport);
+                wasmInstance = instance;
+            } catch (error) {
+                // Fallback for browsers that don't support instantiateStreaming (e.g., some Safari versions)
+                const response = await fetch(data.sorterWasmUrl);
+                const wasmBytes = await response.arrayBuffer();
+                const wasmModule = await WebAssembly.compile(wasmBytes);
+                wasmInstance = await WebAssembly.instantiate(wasmModule, sorterWasmImport);
+            }
+            wasmMemory = sorterWasmImport.env.memory.buffer;
+        }
 
         // update centers
         new Uint32Array(wasmMemory, centersOffset, memoryRequiredForCenters / Constants.BytesPerInt)
@@ -163,19 +189,20 @@ self.onmessage = async (e) => {
             chunk2SplatsMapping = new Uint32Array(chunkNum * splatsPerChunk);
             fillChunk2SplatsMapping(chunk2SplatsMapping, chunkNum, data.chunkResolution.width);
         }
-
-        console.log('setup sort worker', data.sorterWasmUrl)
-        if (useSharedMemory) {
-            self.postMessage({
-                'sortSetupPhase1Complete': true,
-                'sortedIndexesBuffer': wasmMemory,
-                'sortedIndexesOffset': sortedIndexesOffset,
-                'transformsBuffer': wasmMemory,
-            });
-        } else {
-            self.postMessage({
-                'sortSetupPhase1Complete': true
-            });
+        if (!refreshOnly) {
+            console.log('setup sort worker', data.sorterWasmUrl)
+            if (useSharedMemory) {
+                self.postMessage({
+                    'sortSetupPhase1Complete': true,
+                    'sortedIndexesBuffer': wasmMemory,
+                    'sortedIndexesOffset': sortedIndexesOffset,
+                    'transformsBuffer': wasmMemory,
+                });
+            } else {
+                self.postMessage({
+                    'sortSetupPhase1Complete': true
+                });
+            }
         }
     }
 };
