@@ -41,7 +41,7 @@ class Scene:
         
         IdentifiedKernel = None
         for kernel_class in known_kernels:
-            if kernel_class.identify(self.header):
+            if kernel_class.identify([line.split() for line in self.header.splitlines()]):
                 IdentifiedKernel = kernel_class
                 break
         

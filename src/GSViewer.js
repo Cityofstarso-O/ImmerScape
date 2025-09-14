@@ -190,6 +190,12 @@ export default class GSViewer {
         }
         this.controls.enabled = false;
         this.runXR();
+        switch (this.gsScene.gsType) {
+            case 'ThreeD': this.alphaCullThreshold = 15 / 255; break;
+            case 'SPACETIME': this.alphaCullThreshold = 35 / 255; break;
+            default: break;
+        }
+
         return true;
     }
 
@@ -402,11 +408,13 @@ export default class GSViewer {
                 this.graphicsAPI.bindFrameBuffer(this.webxr.framebuffer);
                 this.webxr.updateClearColor(0, 0, 0, 1);
                 for (const view of pose.views) {
-                    const viewport = this.webxr.baseLayer.getViewport(view);
+                    const viewport = this.webxr.getViewport(view);
                     this.graphicsAPI.updateViewport({x:viewport.x, y:viewport.y}, {x:viewport.width, y:viewport.height});
                     this.shaderManager.setPipeline();
                     this.__updateUniforms(Array.from(view.projectionMatrix), Array.from(view.transform.inverse.matrix), viewport);
                     this.graphicsAPI.drawInstanced('TRIANGLE_FAN', 0, 4, this.sorter.getSplatSortCount());
+
+                    this.webxr.render(view);
                 }
             }
         }
@@ -442,7 +450,7 @@ export default class GSViewer {
                 });
             }
 
-            if (this.webxr.running) {
+            if (this.webxr.running && this.frameCount === 0) {
                 this.webxr.frameRateControl(this.fps);
             }
 
@@ -469,7 +477,7 @@ export default class GSViewer {
         this.__shouldRender(true);
         this.__runSplatSort(false, true);
         
-        if (this.options.isMobile) {
+        if (this.options.isMobile || this.webxr.running) {
             switch (data.gsType) {
                 case 'ThreeD': this.alphaCullThreshold = 15 / 255; break;
                 case 'SPACETIME': this.alphaCullThreshold = 35 / 255; break;

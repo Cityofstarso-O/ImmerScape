@@ -9,103 +9,116 @@ import math
 import pyvista as pv
 from scipy.spatial.distance import pdist
 
-class P(IntEnum):
-        x = 0
-        y = auto()
-        z = auto()
-        nx = auto()
-        ny = auto()
-        nz = auto()
-        f_dc_0 = auto()
-        f_dc_1 = auto()
-        f_dc_2 = auto()
-        f_rest_0 = auto()
-        f_rest_1 = auto()
-        f_rest_2 = auto()
-        f_rest_3 = auto()
-        f_rest_4 = auto()
-        f_rest_5 = auto()
-        f_rest_6 = auto()
-        f_rest_7 = auto()
-        f_rest_8 = auto()
-        f_rest_9 = auto()
-        f_rest_10 = auto()
-        f_rest_11 = auto()
-        f_rest_12 = auto()
-        f_rest_13 = auto()
-        f_rest_14 = auto()
-        f_rest_15 = auto()
-        f_rest_16 = auto()
-        f_rest_17 = auto()
-        f_rest_18 = auto()
-        f_rest_19 = auto()
-        f_rest_20 = auto()
-        f_rest_21 = auto()
-        f_rest_22 = auto()
-        f_rest_23 = auto()
-        f_rest_24 = auto()
-        f_rest_25 = auto()
-        f_rest_26 = auto()
-        f_rest_27 = auto()
-        f_rest_28 = auto()
-        f_rest_29 = auto()
-        f_rest_30 = auto()
-        f_rest_31 = auto()
-        f_rest_32 = auto()
-        f_rest_33 = auto()
-        f_rest_34 = auto()
-        f_rest_35 = auto()
-        f_rest_36 = auto()
-        f_rest_37 = auto()
-        f_rest_38 = auto()
-        f_rest_39 = auto()
-        f_rest_40 = auto()
-        f_rest_41 = auto()
-        f_rest_42 = auto()
-        f_rest_43 = auto()
-        f_rest_44 = auto()
-        opacity = auto()
-        scale_0 = auto()
-        scale_1 = auto()
-        scale_2 = auto()
-        rot_0 = auto()
-        rot_1 = auto()
-        rot_2 = auto()
-        rot_3 = auto()
-        total = auto()
+P = {
+    'x': -1,
+    'y': -1,
+    'z': -1,
+    'nx': -1,
+    'ny': -1,
+    'nz': -1,
+    'f_dc_0': -1,
+    'f_dc_1': -1,
+    'f_dc_2': -1,
+    'f_rest_0': -1,
+    'f_rest_1': -1,
+    'f_rest_2': -1,
+    'f_rest_3': -1,
+    'f_rest_4': -1,
+    'f_rest_5': -1,
+    'f_rest_6': -1,
+    'f_rest_7': -1,
+    'f_rest_8': -1,
+    'f_rest_9': -1,
+    'f_rest_10': -1,
+    'f_rest_11': -1,
+    'f_rest_12': -1,
+    'f_rest_13': -1,
+    'f_rest_14': -1,
+    'f_rest_15': -1,
+    'f_rest_16': -1,
+    'f_rest_17': -1,
+    'f_rest_18': -1,
+    'f_rest_19': -1,
+    'f_rest_20': -1,
+    'f_rest_21': -1,
+    'f_rest_22': -1,
+    'f_rest_23': -1,
+    'f_rest_24': -1,
+    'f_rest_25': -1,
+    'f_rest_26': -1,
+    'f_rest_27': -1,
+    'f_rest_28': -1,
+    'f_rest_29': -1,
+    'f_rest_30': -1,
+    'f_rest_31': -1,
+    'f_rest_32': -1,
+    'f_rest_33': -1,
+    'f_rest_34': -1,
+    'f_rest_35': -1,
+    'f_rest_36': -1,
+    'f_rest_37': -1,
+    'f_rest_38': -1,
+    'f_rest_39': -1,
+    'f_rest_40': -1,
+    'f_rest_41': -1,
+    'f_rest_42': -1,
+    'f_rest_43': -1,
+    'f_rest_44': -1,
+    'opacity': -1,
+    'scale_0': -1,
+    'scale_1': -1,
+    'scale_2': -1,
+    'rot_0': -1,
+    'rot_1': -1,
+    'rot_2': -1,
+    'rot_3': -1,
+    'total': -1,
+}
 
 SH_C0 = 0.28209479177387814
 
 class Kernel_3dgs:
 
     @staticmethod
-    def identify(header: str):
-        return 'f_rest_0' in header
+    def identify(headerLines: str):
+        for key in P:
+            P[key] = -1
+        cnter = 0
+        for line in headerLines:
+            if line[0] == 'property' and line[1] == 'float':
+                key = line[2]
+                if key in P:
+                    P[key] = cnter
+                    cnter = cnter + 1
+                else:
+                    return False
+        P['total'] = cnter
+        return True
     
     @staticmethod
     def getParams(data: bytes):
-        ply = np.frombuffer(data, dtype=np.float32).reshape([-1, P.total])
+        ply = np.frombuffer(data, dtype=np.float32).reshape([-1, P['total']])
         ply = utils.alignTo256(ply, 256)
 
-        xyz = ply[:, P.x:P.z + 1]
-        s = ply[:, P.scale_0:P.scale_2 + 1]
-        q = ply[:, [P.rot_1, P.rot_2, P.rot_3, P.rot_0]]
-        color = ply[:, [P.f_dc_0, P.f_dc_1, P.f_dc_2, P.opacity]]
-        d1 = ply[:, [P.f_rest_0,  P.f_rest_15, P.f_rest_30, 
-                     P.f_rest_1,  P.f_rest_16, P.f_rest_31, 
-                     P.f_rest_2,  P.f_rest_17, P.f_rest_32]]
-        d2 = ply[:, [P.f_rest_3,  P.f_rest_18, P.f_rest_33, 
-                     P.f_rest_4,  P.f_rest_19, P.f_rest_34, 
-                     P.f_rest_5,  P.f_rest_20, P.f_rest_35,
-                     P.f_rest_6,  P.f_rest_21, P.f_rest_36, 
-                     P.f_rest_7,  P.f_rest_22, P.f_rest_37]]
-        d3 = ply[:, [P.f_rest_8,  P.f_rest_23, P.f_rest_38, 
-                     P.f_rest_9,  P.f_rest_24, P.f_rest_39, 
-                     P.f_rest_10, P.f_rest_25, P.f_rest_40,
-                     P.f_rest_11, P.f_rest_26, P.f_rest_41,
-                     P.f_rest_12, P.f_rest_27, P.f_rest_42,
-                     P.f_rest_13, P.f_rest_28, P.f_rest_43, 
-                     P.f_rest_14, P.f_rest_29, P.f_rest_44]]
+        xyz = ply[:, P['x']:P['z'] + 1]
+        s = ply[:, P['scale_0']:P['scale_2'] + 1]
+        q = ply[:, [P['rot_1'], P['rot_2'], P['rot_3'], P['rot_0']]]
+        color = ply[:, [P['f_dc_0'], P['f_dc_1'], P['f_dc_2'], P['opacity']]]
+        d1 = ply[:, [P['f_rest_0'],  P['f_rest_15'], P['f_rest_30'], 
+                     P['f_rest_1'],  P['f_rest_16'], P['f_rest_31'], 
+                     P['f_rest_2'],  P['f_rest_17'], P['f_rest_32']]]
+        d2 = ply[:, [P['f_rest_3'],  P['f_rest_18'], P['f_rest_33'], 
+                     P['f_rest_4'],  P['f_rest_19'], P['f_rest_34'], 
+                     P['f_rest_5'],  P['f_rest_20'], P['f_rest_35'],
+                     P['f_rest_6'],  P['f_rest_21'], P['f_rest_36'], 
+                     P['f_rest_7'],  P['f_rest_22'], P['f_rest_37']]]
+        d3 = ply[:, [P['f_rest_8'],  P['f_rest_23'], P['f_rest_38'], 
+                     P['f_rest_9'],  P['f_rest_24'], P['f_rest_39'], 
+                     P['f_rest_10'], P['f_rest_25'], P['f_rest_40'],
+                     P['f_rest_11'], P['f_rest_26'], P['f_rest_41'],
+                     P['f_rest_12'], P['f_rest_27'], P['f_rest_42'],
+                     P['f_rest_13'], P['f_rest_28'], P['f_rest_43'], 
+                     P['f_rest_14'], P['f_rest_29'], P['f_rest_44']]]
         
         color[:, 0:3] = np.clip(0.5 + SH_C0 * color[:, 0:3], 0.0, 1.0)
         color[:, 3] = utils.sigmoid(color[:, 3])

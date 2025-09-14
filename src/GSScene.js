@@ -270,7 +270,7 @@ export class GSScene {
         } else if (sceneType.virtualSequentialThreeD) {
             for (const subSceneUID of scene.frames) {
                 const subScene = this.scenes[subSceneUID];
-                GSScene.exportGlbFile(this.modifyGlbJson(subScene, scene.modelMatrix), subScene.name + '.glb');
+                GSScene.exportGlbFile(this.modifyGlbJson(subScene, scene.modelMatrix), Utils.extractFileName(subScene.file.name) + '.glb');
             }
         }
     }

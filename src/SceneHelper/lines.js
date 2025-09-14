@@ -43,8 +43,8 @@ export class Lines {
         this.vertices = [];
     }
 
-    updateBuffers() {
-        this.graphicsAPI.initBuffer(this.vao.buffer, new Float32Array(this.vertices), 'STATIC_DRAW');
+    updateBuffers(dynamic = false) {
+        this.graphicsAPI.initBuffer(this.vao.buffer, new Float32Array(this.vertices), dynamic ? 'DYNAMIC_DRAW' : 'STATIC_DRAW');
     }
 
     /**

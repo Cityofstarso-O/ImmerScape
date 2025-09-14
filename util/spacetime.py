@@ -11,62 +11,75 @@ from scipy.spatial.distance import pdist
 import keyboard
 from threeD import Kernel_3dgs
 
-class P(IntEnum):
-    x = 0
-    y = auto()
-    z = auto()
-    trbf_center = auto()
-    trbf_scale = auto()
-    nx = auto()
-    ny = auto()
-    nz = auto()
-    motion_0 = auto()
-    motion_1 = auto()
-    motion_2 = auto()
-    motion_3 = auto()
-    motion_4 = auto()
-    motion_5 = auto()
-    motion_6 = auto()
-    motion_7 = auto()
-    motion_8 = auto()
-    f_dc_0 = auto()
-    f_dc_1 = auto()
-    f_dc_2 = auto()
-    opacity = auto()
-    scale_0 = auto()
-    scale_1 = auto()
-    scale_2 = auto()
-    rot_0 = auto()
-    rot_1 = auto()
-    rot_2 = auto()
-    rot_3 = auto()
-    omega_0 = auto()
-    omega_1 = auto()
-    omega_2 = auto()
-    omega_3 = auto()
-    total = auto()
+P = {
+    'x': -1,
+    'y': -1,
+    'z': -1,
+    'trbf_center': -1,
+    'trbf_scale': -1,
+    'nx': -1,
+    'ny': -1,
+    'nz': -1,
+    'motion_0': -1,
+    'motion_1': -1,
+    'motion_2': -1,
+    'motion_3': -1,
+    'motion_4': -1,
+    'motion_5': -1,
+    'motion_6': -1,
+    'motion_7': -1,
+    'motion_8': -1,
+    'f_dc_0': -1,
+    'f_dc_1': -1,
+    'f_dc_2': -1,
+    'opacity': -1,
+    'scale_0': -1,
+    'scale_1': -1,
+    'scale_2': -1,
+    'rot_0': -1,
+    'rot_1': -1,
+    'rot_2': -1,
+    'rot_3': -1,
+    'omega_0': -1,
+    'omega_1': -1,
+    'omega_2': -1,
+    'omega_3': -1,
+    'total': -1,
+}
 
 class Kernel_spacetime:
 
     @staticmethod
-    def identify(header: str):
-        return 'motion_0' in header
+    def identify(headerLines: str):
+        for key in P:
+            P[key] = -1
+        cnter = 0
+        for line in headerLines:
+            if line[0] == 'property' and line[1] == 'float':
+                key = line[2]
+                if key in P:
+                    P[key] = cnter
+                    cnter = cnter + 1
+                else:
+                    return False
+        P['total'] = cnter
+        return True
     
     @staticmethod
     def getParams(data: bytes):
-        ply = np.frombuffer(data, dtype=np.float32).reshape([-1, P.total])
+        ply = np.frombuffer(data, dtype=np.float32).reshape([-1, P['total']])
         ply = utils.alignTo256(ply, 256)
 
-        xyz = ply[:, [P.x, P.y, P.z]]
-        motion1 = ply[:, [P.motion_0,  P.motion_1, P.motion_2]]
-        motion2 = ply[:, [P.motion_3,  P.motion_4, P.motion_5]]
-        motion3 = ply[:, [P.motion_6,  P.motion_7, P.motion_8]]
-        tc = ply[:, P.trbf_center:P.trbf_center + 1]
-        s = ply[:, [P.scale_0, P.scale_1, P.scale_2]]
-        ts = ply[:, P.trbf_scale:P.trbf_scale + 1]
-        q = ply[:, [P.rot_1, P.rot_2, P.rot_3, P.rot_0]]
-        omega = ply[:, [P.omega_1, P.omega_2, P.omega_3, P.omega_0]]
-        color = ply[:, [P.f_dc_0, P.f_dc_1, P.f_dc_2, P.opacity]]
+        xyz = ply[:, [P['x'], P['y'], P['z']]]
+        motion1 = ply[:, [P['motion_0'],  P['motion_1'], P['motion_2']]]
+        motion2 = ply[:, [P['motion_3'],  P['motion_4'], P['motion_5']]]
+        motion3 = ply[:, [P['motion_6'],  P['motion_7'], P['motion_8']]]
+        tc = ply[:, P['trbf_center']:P['trbf_center'] + 1]
+        s = ply[:, [P['scale_0'], P['scale_1'], P['scale_2']]]
+        ts = ply[:, P['trbf_scale']:P['trbf_scale'] + 1]
+        q = ply[:, [P['rot_1'], P['rot_2'], P['rot_3'], P['rot_0']]]
+        omega = ply[:, [P['omega_1'], P['omega_2'], P['omega_3'], P['omega_0']]]
+        color = ply[:, [P['f_dc_0'], P['f_dc_1'], P['f_dc_2'], P['opacity']]]
         
         color[:, 3] = utils.sigmoid(color[:, 3])
         color = np.clip(color, 0.0, 1.0)

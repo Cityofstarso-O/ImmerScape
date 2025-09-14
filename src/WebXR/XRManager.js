@@ -4,6 +4,7 @@
 // input
 // move
 
+import { XRScene } from "./XRScene.js";
 import { EventDispatcher, WebXRController } from "three";
 import * as THREE from "three";
 
@@ -29,6 +30,7 @@ export class XRManager extends EventDispatcher {
         };
         this.running = false;
         this.sessionType = null;
+        this.viewportScale = 1.0;
 
         // objects
         this.xrSession = null;
@@ -41,9 +43,9 @@ export class XRManager extends EventDispatcher {
         this.controllers = [];
         this.controllerInputSources = [];
 
-        this.virtualScene = new THREE.Scene();
-        this.virtualScene.add(this.getHand(0));
-        this.virtualScene.add(this.getHand(1));
+        this.virtualScene = new XRScene(graphicsAPI);
+        this.virtualScene.addHand(this.getHand(0), 0);
+        this.virtualScene.addHand(this.getHand(1), 1);
 
 
         this.onSessionEnd = this.onSessionEnd.bind(this);
@@ -98,6 +100,19 @@ export class XRManager extends EventDispatcher {
 				controller.update(inputSource, frame, this.userReferenceSpace);
 			}
 		}
+
+        this.virtualScene.updateRenderData();
+    }
+
+    getViewport(view) {
+        if (view.requestViewportScale) {
+            view.requestViewportScale(this.viewportScale);
+        }
+        return this.baseLayer.getViewport(view);
+    }
+
+    render(view) {
+        this.virtualScene.renderHands(view);
     }
 
     getHand(index) {
@@ -277,6 +292,7 @@ export class XRManager extends EventDispatcher {
         this.xrSession.addEventListener('inputsourceschange', this.onInputSourcesChange);
 
         this.running = true;
+        this.fixedFoveation = 1.0;
         console.log(`Successfully enter ${this.sessionType}`);
         return true;
     }
@@ -294,31 +310,46 @@ export class XRManager extends EventDispatcher {
 
     frameRateControl = function() {
         let targetFPSIdx = 0;
+        let supportRatesLength = 0;
+        let changing = false;
         let enale = false;
 
         return function(currentFPS, reset = false) {
+            const supportedRates = this.xrSession.supportedFrameRates;
             if (reset) {
-                targetFPSIdx = 0;
-                enale = this.xrSession.frameRate && this.xrSession.supportedFrameRates && this.xrSession.updateTargetFrameRate;
-                return;
-            }
-            if (!enale) {
-                return;
-            }
-
-            const supportedRates = session.supportedFrameRates;
-            const length = supportedRates.length;
-
-            if (currentFPS < supportedRates[targetFPSIdx]) {
-                if (targetFPSIdx > 0) {
-                    this.xrSession.updateTargetFrameRate(supportedRates[targetFPSIdx - 1]).then(() => {
-                        targetFPSIdx--;
+                enale = Boolean(supportedRates && this.xrSession.updateTargetFrameRate);
+                if (enale) {
+                    changing = true;
+                    supportRatesLength = supportedRates.length;
+                    this.xrSession.updateTargetFrameRate(supportedRates[supportRatesLength - 1]).then(() => {
+                        targetFPSIdx = supportRatesLength - 1;
+                        changing = false;
                     });
                 }
+                return;
+            }
+
+            if (!enale || changing) {
+                return;
+            }
+
+            // hacky 6
+            if (currentFPS < supportedRates[targetFPSIdx] - 6) {
+                if (targetFPSIdx > 0) {
+                    changing = true;
+                    this.xrSession.updateTargetFrameRate(supportedRates[targetFPSIdx - 1]).then(() => {
+                        targetFPSIdx--;
+                        changing = false;
+                    });
+                } else {
+                    this.viewportScale = Math.max(0.8, this.viewportScale - 0.01);
+                }
             } else {
-                if (targetFPSIdx < length - 1 && currentFPS > supportedRates[targetFPSIdx + 1]) {
+                if (targetFPSIdx < supportRatesLength - 1 && currentFPS > supportedRates[targetFPSIdx + 1]) {
+                    changing = true;
                     this.xrSession.updateTargetFrameRate(supportedRates[targetFPSIdx + 1]).then(() => {
                         targetFPSIdx++;
+                        changing = false;
                     });
                 }
             }
