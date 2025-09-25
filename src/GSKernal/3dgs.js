@@ -542,7 +542,7 @@ export class GSKernel_3DGS {
         // so that the indices of valid splats are likely of incontiuity.
         // therefore we need all splats on texture
         const allSplatsOnTexture = scene.chunkResolution.width * scene.chunkResolution.height * 256;
-        const sortBuffer = new Int32Array(allSplatsOnTexture * 4);
+        const sortBuffer = new Float32Array(allSplatsOnTexture * 4);
         const chunkBuffer = new Float32Array(scene.chunkNum * 6);
         const xyz = new Uint32Array(scene.buffers.u_xyz.buffer);
         const range = new DataView(scene.buffers.u_range.buffer);
@@ -570,9 +570,9 @@ export class GSKernel_3DGS {
                     if (offset >= sortBuffer.length) {
                         console.log('aaa', sortBuffer[offset])
                     }
-                    sortBuffer[offset + 0] = Math.round(Utils.uintX2float(bit11Mask&(x11y10z11>> 0), 11, xmin, xmax) * 1000.0);
-                    sortBuffer[offset + 1] = Math.round(Utils.uintX2float(bit10Mask&(x11y10z11>>11), 10, ymin, ymax) * 1000.0);
-                    sortBuffer[offset + 2] = Math.round(Utils.uintX2float(bit11Mask&(x11y10z11>>21), 11, zmin, zmax) * 1000.0);
+                    sortBuffer[offset + 0] = Utils.uintX2float(bit11Mask&(x11y10z11>> 0), 11, xmin, xmax);
+                    sortBuffer[offset + 1] = Utils.uintX2float(bit10Mask&(x11y10z11>>11), 10, ymin, ymax);
+                    sortBuffer[offset + 2] = Utils.uintX2float(bit11Mask&(x11y10z11>>21), 11, zmin, zmax);
                 }
             }
 

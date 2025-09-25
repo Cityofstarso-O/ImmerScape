@@ -26,16 +26,16 @@ EXTERN EMSCRIPTEN_KEEPALIVE void sortIndexes(
 
     if (gsType == 1) {   // ThreeD
         // always use int centers in this case
-        int *iCenters = (int*)centers;
-        int iMVPRow3[4] = {(int)(modelViewProj[2] * 1000.0), (int)(modelViewProj[6] * 1000.0), (int)(modelViewProj[10] * 1000.0), 1};
+        float fMVPRow3[4] = { modelViewProj[2] * 4096.f, modelViewProj[6] * 4096.f, modelViewProj[10] * 4096.f, 1 };
+        float* fCenters = (float*)centers;
 #ifdef __wasm_simd128__
-        int tempOut[4];
-        v128_t b = wasm_v128_load(&iMVPRow3[0]);
+        float tempOut[4];
+        v128_t b = wasm_v128_load(&fMVPRow3[0]);
         for (unsigned int i = 0; i < sortCount; i++) {
-            v128_t a = wasm_v128_load(&iCenters[4 * indexes[i]]);
-            v128_t prod = wasm_i32x4_mul(a, b);
+            v128_t a = wasm_v128_load(&fCenters[4 * indexes[i]]);
+            v128_t prod = wasm_f32x4_mul(a, b);
             wasm_v128_store(&tempOut[0], prod);
-            int distance = tempOut[0] + tempOut[1] + tempOut[2];
+            int distance = (int)(tempOut[0] + tempOut[1] + tempOut[2]);
             mappedDistances[i] = distance;
             if (distance > maxDistance) maxDistance = distance;
             if (distance < minDistance) minDistance = distance;
@@ -44,9 +44,9 @@ EXTERN EMSCRIPTEN_KEEPALIVE void sortIndexes(
         for (unsigned int i = 0; i < sortCount; i++) {
             unsigned int indexOffset = 4 * (unsigned int)indexes[i];
             int distance =
-                (int)((iMVPRow3[0] * iCenters[indexOffset] +
-                       iMVPRow3[1] * iCenters[indexOffset + 1] +
-                       iMVPRow3[2] * iCenters[indexOffset + 2]));
+                (int)((fMVPRow3[0] * fCenters[indexOffset] +
+                       fMVPRow3[1] * fCenters[indexOffset + 1] +
+                       fMVPRow3[2] * fCenters[indexOffset + 2]));
             mappedDistances[i] = distance;
             if (distance > maxDistance) maxDistance = distance;
             if (distance < minDistance) minDistance = distance;
