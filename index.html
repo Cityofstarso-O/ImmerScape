@@ -434,7 +434,7 @@
                             </template>
                             <v-list density="compact">
                                 <v-list-item 
-                                    v-for="speed in [0.5, 1.0, 2.0, 4.0, 8.0]" 
+                                    v-for="speed in [1.0, 6.0, 12.0, 24.0, 30.0, 60.0]" 
                                     :key="speed" 
                                     :title="`${speed.toFixed(1)}x`"
                                     @click="setPlaybackSpeed(speed)"

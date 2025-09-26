@@ -6,7 +6,7 @@ test.html
 ./*.png
 node_modules
 dist
-scenes
+scenes/*.glb
 /*.zip
 __pycache__
 *.pem
