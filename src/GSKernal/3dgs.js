@@ -470,12 +470,19 @@ export class GSKernel_3DGS {
             res += `{
                 ivec2 rangeUV, uv;
                 splatIndex2RangeUV(splatIndex, rangeUV, uv);
-
+                
+                rangeUV.x *= 2;
                 uvec4 range = texelFetch(u_range, rangeUV, 0);
                 vec2 xmin_ymin = unpackHalf2x16(range.x);
                 vec2 zmin_xmax = unpackHalf2x16(range.y);
                 vec2 ymax_zmax = unpackHalf2x16(range.z);
                 vec2 smin_smax = unpackHalf2x16(range.w);
+
+                rangeUV.x += 1;
+                range = texelFetch(u_range, rangeUV, 0);
+                vec2 rmin_rmax = unpackHalf2x16(range.x);
+                vec2 gmin_gmax = unpackHalf2x16(range.y);
+                vec2 bmin_bmax = unpackHalf2x16(range.z);
 
                 uint x11y10z11 = texelFetch(u_xyz, uv, 0).r;
                 const float inv1023 = 0.0009775171;
@@ -492,6 +499,9 @@ export class GSKernel_3DGS {
                 Vrk = fetchVrk(s, q);
 
                 splatColor = texelFetch(u_color, uv, 0);
+                splatColor.r = splatColor.r * (rmin_rmax.y - rmin_rmax.x) + rmin_rmax.x;
+                splatColor.g = splatColor.g * (gmin_gmax.y - gmin_gmax.x) + gmin_gmax.x;
+                splatColor.b = splatColor.b * (bmin_bmax.y - bmin_bmax.x) + bmin_bmax.x;
             }`;
             return res;
         }
@@ -553,7 +563,7 @@ export class GSKernel_3DGS {
         // [chunkHeight, 16, chunkWidth, 16, 1]
         // note that: chunkNum <= chunkWidth * chunkHeight
         for (let i = 0; i < chunkNum; ++i) {
-            const rangeOffset = i * 4 * 4;
+            const rangeOffset = i * 4 * 4 * scene.buffers.u_range.texelPerSplat;
             const xmin = Utils.readFp16(range, rangeOffset + 0, true);
             const ymin = Utils.readFp16(range, rangeOffset + 2, true);
             const zmin = Utils.readFp16(range, rangeOffset + 4, true);

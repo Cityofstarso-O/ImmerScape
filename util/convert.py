@@ -56,6 +56,8 @@ def convert(args):
     for file_path, out_path in first_level_files:
         if not has_name:
             name, _ = os.path.splitext(os.path.basename(file_path))
+        print(f"\n\n============================================")
+        print(f"converting {name} from {file_path} to {out_path}")
         scene = Scene(file_path, name)
         scene.reorder(reorder)
         if visualize:

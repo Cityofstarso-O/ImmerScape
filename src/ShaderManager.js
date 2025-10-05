@@ -215,7 +215,7 @@ export class ShaderManager {
             this.vaos[key] = this.graphicsAPI.setupVAO(this.getAttribLoc(key, 'inPosition'), this.getAttribLoc(key, 'splatIndex'), allSplatsOnTexture, this.vbo);
             this.vbo = this.vaos[key].vertexBuffer;
         } else {
-            this.graphicsAPI.rebuildInstanceBuffer2VAO(this.vaos[key], this.getAttribLoc(key, 'splatIndex'), allSplatsOnTexture);
+            this.graphicsAPI.rebuildInstanceBuffer2VAO(this.vaos[key], this.getAttribLoc(key, 'splatIndex'), allSplatsOnTexture, key);
         }
         
         if (this.debug) {
@@ -363,7 +363,7 @@ export class ShaderManager {
                 float A = dot(v_fragPos, v_fragPos);
                 if (A > 8.0) discard;
                 float opacity = exp(-0.5 * A) * v_fragCol.a;
-                out_FragColor = vec4(v_fragCol.rgb, opacity);
+                out_FragColor = vec4(v_fragCol.rgb * opacity, opacity);
             }
         `
     }

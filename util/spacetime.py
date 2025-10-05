@@ -68,7 +68,7 @@ class Kernel_spacetime:
     @staticmethod
     def getParams(data: bytes):
         ply = np.frombuffer(data, dtype=np.float32).reshape([-1, P['total']])
-        ply = utils.alignTo256(ply, 256)
+        ply = utils.alignTo256(ply, P['opacity'], 256)
 
         xyz = ply[:, [P['x'], P['y'], P['z']]]
         motion1 = ply[:, [P['motion_0'],  P['motion_1'], P['motion_2']]]
@@ -82,7 +82,8 @@ class Kernel_spacetime:
         color = ply[:, [P['f_dc_0'], P['f_dc_1'], P['f_dc_2'], P['opacity']]]
         
         color[:, 3] = utils.sigmoid(color[:, 3])
-        color = np.clip(color, 0.0, 1.0)
+        # rgb value may exceed 1.0, hack: clamp to 6.0
+        color = np.clip(color, 0.0, 6.0)
         s = np.exp(s)
         ts = np.exp(-ts)**2
         # even with spacetime gaussian, ignoring omega seems to be no harm for quality
@@ -376,10 +377,16 @@ class Kernel_spacetime:
 
         # color, Shape: uint8 (num_chunks, chunk_size, 4)
         color_chunks = color.reshape((num_chunks, chunk_size, 4))
-        color_min = np.array(0, dtype=np.float32)
-        color_max = np.array(1, dtype=np.float32)
 
-        normalized_color = (color_chunks - color_min) / (color_max - color_min)
+        color_min = color_chunks.min(axis=1)  # Shape: (num_chunks, 4)
+        color_max = color_chunks.max(axis=1)  # Shape: (num_chunks, 4)
+        color_metadata = np.concatenate([
+            np.concatenate([color_min[:, i:i+1], color_max[:, i:i+1]], axis=1) for i in range(4)
+        ], axis=1) # Shape: (num_chunks, 8)
+
+        color_range = color_max - color_min
+        color_range[color_range == 0] = 1.0
+        normalized_color = (color_chunks - color_min[:, np.newaxis, :]) / color_range[:, np.newaxis, :]
 
         quantized_color = np.around(normalized_color * ((1 << 8) - 1)).astype(np.uint8)
 
@@ -441,9 +448,11 @@ class Kernel_spacetime:
                                           quantized_motion3, quantized_s[:, :, 2:3], 
                                           quantized_tc_ts], axis=-1).view(np.uint32)
 
-        # range, Shape: uint32 (num_chunks, 1, 8)
+        # range, Shape: uint32 (num_chunks, 1, 12)
         quantized_range = np.concatenate((xyz_metadata, s_metadata, 
                                           motion1_metadata, motion2_metadata, motion3_metadata,
+                                          np.zeros_like(motion1_metadata),
+                                          color_metadata[:, :6],
                                           np.zeros_like(motion1_metadata)), axis=-1).astype(np.float16).view(np.uint32)
         quantized_range = quantized_range.reshape([num_chunks, 1, -1])
 

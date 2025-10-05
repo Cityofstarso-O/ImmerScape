@@ -139,7 +139,7 @@ export class WebGL {
         gl.blendEquationSeparate(gl.FUNC_ADD, gl.FUNC_ADD);
 
         gl.blendFuncSeparate(
-            gl.SRC_ALPHA,              // color.srcFactor
+            gl.ONE,              // color.srcFactor
             gl.ONE_MINUS_SRC_ALPHA,    // color.dstFactor
             gl.ONE,              // alpha.srcFactor
             gl.ONE_MINUS_SRC_ALPHA     // alpha.dstFactor
@@ -300,18 +300,18 @@ export class WebGL {
     }
 
     rebuildInstanceBuffer2VAO = function() {
-        let splatCapacity = 0;
-        return function(vertexInput, instanceIndexLocation, splatCount){
-            if (splatCount <= splatCapacity) {
+        const splatCapacity = {};
+        return function(vertexInput, instanceIndexLocation, splatCount, key){
+            if (splatCount <= splatCapacity[key] || 0) {
                 return;
             }
-            splatCapacity = splatCount;
+            splatCapacity[key] = splatCount;
             const gl = this.graphicsAPI;
             gl.deleteBuffer(vertexInput.instanceIndexBuffer);
 
             const newInstanceIndexBuffer = gl.createBuffer();
             gl.bindBuffer(gl.ARRAY_BUFFER, newInstanceIndexBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, splatCapacity * Uint32Array.BYTES_PER_ELEMENT, gl.DYNAMIC_DRAW);
+            gl.bufferData(gl.ARRAY_BUFFER, splatCapacity[key] * Uint32Array.BYTES_PER_ELEMENT, gl.DYNAMIC_DRAW);
 
             gl.bindVertexArray(vertexInput.vao);
             gl.bindBuffer(gl.ARRAY_BUFFER, newInstanceIndexBuffer);

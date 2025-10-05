@@ -46,12 +46,12 @@ def compute_tex_size(texel_num: int, chunkBased: bool) -> tuple:
 
     return 0, 0
     
-def alignTo256(ply: np.ndarray, alignment: int = 256) -> np.ndarray:
+def alignTo256(ply: np.ndarray, opacityIdx:int, alignment: int = 256) -> np.ndarray:
     num_vertices = ply.shape[0]
     num_to_pad = (alignment - (num_vertices % alignment)) % alignment
     if num_to_pad > 0:
         last_vertex = ply[-1].copy()
-        last_vertex[3:] = -30000  # 0-2 are position, -30000 is for small opacity
+        last_vertex[opacityIdx] = -70  # 0-2 are position, -70 is for small opacity
         padding_array = np.tile(last_vertex, (num_to_pad, 1))
         return np.concatenate((ply, padding_array), axis=0)
     else:

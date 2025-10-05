@@ -98,7 +98,7 @@ class Kernel_3dgs:
     @staticmethod
     def getParams(data: bytes):
         ply = np.frombuffer(data, dtype=np.float32).reshape([-1, P['total']])
-        ply = utils.alignTo256(ply, 256)
+        ply = utils.alignTo256(ply, P['opacity'], 256)
 
         xyz = ply[:, P['x']:P['z'] + 1]
         s = ply[:, P['scale_0']:P['scale_2'] + 1]
@@ -120,7 +120,8 @@ class Kernel_3dgs:
                      P['f_rest_13'], P['f_rest_28'], P['f_rest_43'], 
                      P['f_rest_14'], P['f_rest_29'], P['f_rest_44']]]
         
-        color[:, 0:3] = np.clip(0.5 + SH_C0 * color[:, 0:3], 0.0, 1.0)
+        # rgb value may exceed 1.0, hack: clamp to 6.0
+        color[:, 0:3] = np.clip(0.5 + SH_C0 * color[:, 0:3], 0.0, 6.0)
         color[:, 3] = utils.sigmoid(color[:, 3])
         s = np.exp(s)
         q /= np.linalg.norm(q, axis=1, keepdims=True)
@@ -376,10 +377,16 @@ class Kernel_3dgs:
 
         # color, Shape: uint8 (num_chunks, chunk_size, 4)
         color_chunks = color.reshape((num_chunks, chunk_size, 4))
-        color_min = np.array(0, dtype=np.float32)
-        color_max = np.array(1, dtype=np.float32)
 
-        normalized_color = (color_chunks - color_min) / (color_max - color_min)
+        color_min = color_chunks.min(axis=1)  # Shape: (num_chunks, 4)
+        color_max = color_chunks.max(axis=1)  # Shape: (num_chunks, 4)
+        color_metadata = np.concatenate([
+            np.concatenate([color_min[:, i:i+1], color_max[:, i:i+1]], axis=1) for i in range(4)
+        ], axis=1) # Shape: (num_chunks, 8)
+
+        color_range = color_max - color_min
+        color_range[color_range == 0] = 1.0
+        normalized_color = (color_chunks - color_min[:, np.newaxis, :]) / color_range[:, np.newaxis, :]
 
         quantized_color = np.around(normalized_color * ((1 << 8) - 1)).astype(np.uint8)
 
@@ -395,8 +402,10 @@ class Kernel_3dgs:
 
         quantized_s = np.around(normalized_s * ((1 << 8) - 1)).astype(np.uint8)
 
-        # range, Shape: uint32 (num_chunks, 1, 4)
-        quantized_range = np.concatenate((xyz_metadata, s_metadata), axis=1).astype(np.float16).view(np.uint32)
+        # range, Shape: uint32 (num_chunks, 1, 8)
+        quantized_range = np.concatenate((xyz_metadata, s_metadata,
+                                          color_metadata[:, :6],
+                                          np.zeros_like(s_metadata)), axis=1).astype(np.float16).view(np.uint32)
         quantized_range = quantized_range.reshape([num_chunks, 1, -1])
 
         # declare the textures
@@ -443,6 +452,8 @@ class Kernel_3dgs:
             quantized_params[key] = quantized_param
 
         # create descriptors and metadata
+        # special for u_range
+        quantized_params['range'] = quantized_params['range'].reshape((chunkHeight, -1, 4))
         metadata = b""
         descriptors = {}
         offset = 0

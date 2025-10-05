@@ -36,7 +36,7 @@
 | sqrt(s)  | RGB8      | 8     | 8     | 8     |       | 1                  |
 | q        | RGBA8     | 8     | 8     | 8     | 8     | 1                  |
 | c        | RGBA8     | 8     | 8     | 8     | 8     | 1                  |
-| range    | RGBA32UI  | 32u   | 32u   | 32u   | 32u   | 1                  |
+| range    | RGBA32UI  | 32u   | 32u   | 32u   | 32u   | 2                  |
 
 对应含义如下表：
 | property | texel offset | R     | G     | B     | A     |
@@ -46,6 +46,7 @@
 | q        |  0           | q.x     | q.y    | q.z    | q.w    |
 | c        |  0           | c.r     | c.g    | c.b   | c.a   |
 | range    |  0           | min(x)\|min(y) | min(z)\|max(x) | max(y)\|max(z) | min(sqrt(s))\|max(sqrt(s)) |
+| range    |  1           | min(c.r)\|max(c.r) | min(c.g)\|max(c.g) | min(c.b)\|max(c.b) |  |
 
 对于chunk内的256个高斯，我们获取其各属性的最大最小值用于线性量化。特别的，对于缩放属性s，首先做一次开方扩大数据分布范围再进行量化；对于旋转四元数和颜色c，量化范围直接是0-1。
 
@@ -56,7 +57,7 @@
 | q        | RGBA8    | 8     | 8     | 8     | 8     | 1                  |
 | c        | RGBA8    | 8     | 8     | 8     | 8     | 1                  |
 | other    | RGBA32UI | 32u   | 32u   | 32u   | 32u   | 1                  |
-| range    | RGBA32UI | 32u   | 32u   | 32u   | 32u   | 2                  |
+| range    | RGBA32UI | 32u   | 32u   | 32u   | 32u   | 3                  |
 
 对应含义如下表：
 | property | texel offset | R     | G     | B     | A     |
@@ -67,6 +68,7 @@
 | other    |  0           | m1\|sqrt(s).x  | m2\|sqrt(s).y  | m3\|sqrt(s).z  | tc\|ts  |
 | range    |  0           | min(x)\|min(y) | min(z)\|max(x) | max(y)\|max(z) | min(sqrt(s))\|max(sqrt(s)) |
 | range    |  1           | min(m1)\|max(m1) | min(m2)\|max(m2) | min(m3)\|max(m3) |   |
+| range    |  2           | min(c.r)\|max(c.r) | min(c.g)\|max(c.g) | min(c.b)\|max(c.b) |  |
 
 其中m1,m2,m3分别为1,2,3阶运动系数。时间中心tc和时间缩放ts分别存储为fp16并pack成u32。同时我们只存储了0阶旋转四元数q，丢弃了1阶旋转参数，对画面的影响微乎其微。
 #### 纹理内重排序

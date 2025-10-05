@@ -91,8 +91,17 @@ export class GlbLoader {
         scene.chunkBased = 'chunkBased';
         scene.chunkNum = scene.num / 256;
         scene.chunkResolution = {
-            width: scene.buffers.u_range.width,
-            height: scene.buffers.u_range.height,
+            width: scene.buffers.u_xyz.width / 16,
+            height: scene.buffers.u_xyz.height / 16,
+        }
+        
+        for (const image of json.images) {
+            const name = image.extras.name;
+            if (name === 'u_range') {
+                scene.buffers[name].texelPerSplat = scene.buffers[name].width / scene.chunkResolution.width;
+            } else {
+                scene.buffers[name].texelPerSplat = 1;
+            }
         }
         return scene;
     }
