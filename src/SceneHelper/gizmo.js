@@ -120,6 +120,7 @@ export class Gizmo {
 
             // lines pipeline
             // draw after circles so it won't be alpha-blended with transparent circles
+            this.graphicsAPI.bindTexture(this.texture, this.activeBindID);
             this.lines.render(this.orthocamera.projectionMatrix.elements, this.orthocamera.matrixWorldInverse.elements);
         }
         

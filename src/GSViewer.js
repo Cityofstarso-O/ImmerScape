@@ -39,6 +39,7 @@ export default class GSViewer {
         this.devicePixelRatio = window.devicePixelRatio;
         this.canvas.width  = Math.round(this.canvas.clientWidth  * this.devicePixelRatio);
         this.canvas.height = Math.round(this.canvas.clientHeight * this.devicePixelRatio);
+        this.renderTarget = this.graphicsAPI.createFramebuffer(this.canvas.width, this.canvas.height);
         this.perspectiveCamera = null;
         this.camera = null;
         this.initialCameraPosition = this.options.initialCameraPosition;
@@ -373,6 +374,8 @@ export default class GSViewer {
             }
             if (this.__shouldRender()) {
                 // pass 0: gaussian splatting
+                this.graphicsAPI.bindFrameBuffer(this.renderTarget.framebuffer);
+                this.graphicsAPI.updateClearColor(this.backgroundColor[0], this.backgroundColor[1], this.backgroundColor[2], 1);
                 this.shaderManager.setPipeline();
                 this.__updateUniforms();
 
@@ -382,6 +385,9 @@ export default class GSViewer {
                 }
                 this.graphicsAPI.drawInstanced('TRIANGLE_FAN', 0, 4, this.sorter.getSplatSortCount());
             }
+            this.graphicsAPI.bindFrameBuffer(null);
+            this.graphicsAPI.updateClearColor(this.backgroundColor[0], this.backgroundColor[1], this.backgroundColor[2], 1);
+            this.sceneHelper.postProcess(this.renderTarget.texture);
             if (this.showGizmo) {
                 this.sceneHelper.renderGizmo();
             }
@@ -533,6 +539,10 @@ export default class GSViewer {
                 this.camera.updateProjectionMatrix();
                 lastRendererSize.copy(currentRendererSize);
                 this.sceneHelper._onAspectChanged();
+                if (this.xrRenderLoopHandle == null) {
+                    this.graphicsAPI.deleteFramebuffer(this.renderTarget);
+                    this.renderTarget = this.graphicsAPI.createFramebuffer(this.canvas.width, this.canvas.height);
+                }
             }
         };
     }();

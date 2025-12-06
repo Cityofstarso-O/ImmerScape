@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { Gizmo } from "./gizmo.js";
 import { Grid } from "./grid.js";
+import { PostProcess } from "./postprocess.js";
 import { Group } from "@tweenjs/tween.js";
 
 export class SceneHelper {
@@ -13,6 +14,8 @@ export class SceneHelper {
         this.offsetX = 1 - this.canvas.clientHeight * (1 - this.offsetY) / this.canvas.clientWidth;
 
         this.grid = null;
+
+        this.postProcessor = new PostProcess(this.graphicsAPI);
     }
 
     update(currentTime, deltaT) {
@@ -36,6 +39,10 @@ export class SceneHelper {
     renderGrid() {
         this.graphicsAPI.disableDepth();
         this.grid.render();
+    }
+
+    postProcess(inputTexture) {
+        this.postProcessor.render(inputTexture, 0, [this.canvas.width, this.canvas.height]);
     }
 
     _onMouseMove(event) {

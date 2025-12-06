@@ -378,6 +378,68 @@ export class WebGL {
         };
     }
 
+    setupFullscreenQuadVAO(posLoc, texCoordLoc) {
+        const gl = this.graphicsAPI;
+        const vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        
+        // 定义全屏四边形的顶点数据
+        // 包含位置（x, y）和纹理坐标（u, v）
+        // 使用两个三角形（TRIANGLES）绘制
+        const vertices = new Float32Array([
+            // 位置       // 纹理坐标
+            -1.0, -1.0,  0.0, 0.0,  // 左下
+             1.0, -1.0,  1.0, 0.0,  // 右下
+            -1.0,  1.0,  0.0, 1.0,  // 左上
+             1.0,  1.0,  1.0, 1.0,  // 右上
+            
+            // 为了绘制两个三角形，添加额外的两个顶点
+            // 或者使用索引绘制，这里为了简单使用6个顶点绘制两个三角形
+            // 重新定义6个顶点，形成两个三角形
+        ]);
+        
+        // 重新定义顶点数据，使用6个顶点绘制两个三角形
+        const vertexData = new Float32Array([
+            // 第一个三角形
+            -1.0, -1.0,  0.0, 0.0,  // 左下
+             1.0, -1.0,  1.0, 0.0,  // 右下
+            -1.0,  1.0,  0.0, 1.0,  // 左上
+            
+            // 第二个三角形
+             1.0, -1.0,  1.0, 0.0,  // 右下
+             1.0,  1.0,  1.0, 1.0,  // 右上
+            -1.0,  1.0,  0.0, 1.0,  // 左上
+        ]);
+        
+        const buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, vertexData, gl.STATIC_DRAW);
+        
+        // 计算步幅和偏移
+        const stride = 4 * 4; // 4个浮点数，每个4字节
+        const posOffset = 0;
+        const texCoordOffset = 2 * 4; // 2个浮点数后是纹理坐标
+        
+        // 设置位置属性
+        if (posLoc !== undefined && posLoc !== null) {
+            gl.enableVertexAttribArray(posLoc);
+            gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, stride, posOffset);
+        }
+        
+        // 设置纹理坐标属性
+        if (texCoordLoc !== undefined && texCoordLoc !== null) {
+            gl.enableVertexAttribArray(texCoordLoc);
+            gl.vertexAttribPointer(texCoordLoc, 2, gl.FLOAT, false, stride, texCoordOffset);
+        }
+        
+        gl.bindVertexArray(null);
+        
+        return {
+            vao: vao,
+            buffer: buffer
+        };
+    }
+
     createAndBindBuffer(target, data, location, size, type) {
         const gl = this.graphicsAPI;
 		const buffer = gl.createBuffer(); 
@@ -486,6 +548,72 @@ export class WebGL {
         if (program) {
             this.graphicsAPI.deleteProgram(program);
             program = null;
+        }
+    }
+
+    createFramebuffer(width, height) {
+        const gl = this.graphicsAPI;
+        
+        // 创建帧缓冲区
+        const framebuffer = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+        
+        // 创建纹理
+        const texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        
+        // 分配纹理存储
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, 
+                     gl.RGBA, gl.UNSIGNED_BYTE, null);
+        
+        // 设置纹理参数
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        
+        // 附加纹理到帧缓冲区
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, 
+                               gl.TEXTURE_2D, texture, 0);
+        
+        // 检查完整性
+        if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+            console.error('Framebuffer is incomplete');
+            return null;
+        }
+        
+        // 解绑
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        
+        return {
+            framebuffer: framebuffer,
+            texture: texture,
+            width: width,
+            height: height
+        };
+    }
+
+    deleteFramebuffer(fboObject) {
+        const gl = this.graphicsAPI;
+        
+        if (!fboObject) {
+            return;
+        }
+        
+        // 删除帧缓冲区
+        if (fboObject.framebuffer) {
+            gl.deleteFramebuffer(fboObject.framebuffer);
+        }
+        
+        // 删除纹理
+        if (fboObject.texture) {
+            gl.deleteTexture(fboObject.texture);
+        }
+        
+        // 删除渲染缓冲对象
+        if (fboObject.renderbuffer) {
+            gl.deleteRenderbuffer(fboObject.renderbuffer);
         }
     }
 }

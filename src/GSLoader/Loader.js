@@ -96,7 +96,7 @@ export class GSLoader {
                 'parser': ParserType.CPU,
                 'name': this.currentFile,
                 'data': content,
-                'quality': 'medium',
+                'quality': 'high',
                 'from': 'drag',
             }, [content]);
             this.noteExternalListener();
@@ -125,7 +125,7 @@ export class GSLoader {
             'parser': ParserType.CPU,
             'name': this.currentFile,
             'data': null,
-            'quality': 'medium',
+            'quality': 'high',
             'from': 'url',
         });
         this.noteExternalListener();
