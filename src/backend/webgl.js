@@ -247,10 +247,117 @@ export class WebGL {
         return texture;
     }
 
+    loadTexture3D(url, flip = false) {
+        const gl = this.graphicsAPI;
+        const texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_3D, texture);
+        
+        // 占位纹理：1x1x1蓝色像素
+        const level = 0;
+        const internalFormat = gl.RGBA8;
+        const width = 1;
+        const height = 1;
+        const depth = 1;
+        const border = 0;
+        const format = gl.RGBA;
+        const type = gl.UNSIGNED_BYTE;
+        const pixel = new Uint8Array([0, 0, 255, 255]); // 蓝色
+        
+        gl.texImage3D(
+            gl.TEXTURE_3D, level, internalFormat,
+            width, height, depth, border,
+            format, type, pixel
+        );
+        
+        // 创建Image对象加载图片
+        const image = new Image();
+        image.onload = () => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // 设置画布尺寸
+            canvas.width = image.width;
+            canvas.height = image.height;
+            
+            // 绘制图片
+            ctx.drawImage(image, 0, 0);
+            
+            // 获取图片数据
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            
+            // 假设PNG是1024x32，包含32个32x32切片
+            const sliceWidth = 32;
+            const sliceHeight = 32;
+            const slicesX = canvas.width / sliceWidth; // 1024/32 = 32
+            const slicesY = canvas.height / sliceHeight; // 32/32 = 1
+            
+            if (slicesX !== 32 || slicesY !== 1) {
+                console.warn(`PNG尺寸为${canvas.width}x${canvas.height}，预期为1024x32`);
+            }
+            
+            const sliceCount = slicesX * slicesY;
+            const textureData = new Uint8Array(sliceWidth * sliceHeight * sliceCount * 4);
+            
+            // 从PNG中提取每个切片
+            for (let sliceY = 0; sliceY < slicesY; sliceY++) {
+                for (let sliceX = 0; sliceX < slicesX; sliceX++) {
+                    const sliceIndex = sliceY * slicesX + sliceX;
+                    
+                    for (let y = 0; y < sliceHeight; y++) {
+                        for (let x = 0; x < sliceWidth; x++) {
+                            // 在PNG中的位置
+                            const srcX = sliceX * sliceWidth + x;
+                            const srcY = sliceY * sliceHeight + (flip ? (sliceHeight - 1 - y) : y);
+                            const srcIndex = (srcY * canvas.width + srcX) * 4;
+                            
+                            // 在3D纹理中的位置
+                            const dstIndex = (sliceIndex * sliceWidth * sliceHeight + y * sliceWidth + x) * 4;
+                            
+                            // 复制RGBA数据
+                            textureData[dstIndex] = data[srcIndex];         // R
+                            textureData[dstIndex + 1] = data[srcIndex + 1]; // G
+                            textureData[dstIndex + 2] = data[srcIndex + 2]; // B
+                            textureData[dstIndex + 3] = 1 // data[srcIndex + 3]; // A
+                        }
+                    }
+                }
+            }
+            
+            // 上传3D纹理数据
+            gl.bindTexture(gl.TEXTURE_3D, texture);
+            gl.texImage3D(
+                gl.TEXTURE_3D, level, internalFormat,
+                sliceWidth, sliceHeight, sliceCount, border,
+                format, type, textureData
+            );
+            
+            // 设置纹理参数
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+        };
+        
+        image.onerror = (err) => {
+            console.error('加载3D纹理图片失败:', url, err);
+        };
+        
+        image.src = url; // 触发图片加载
+        return texture;
+    }
+
     bindTexture(texture, bindID) {
         const gl = this.graphicsAPI;
         gl.activeTexture(gl.TEXTURE0 + bindID);
         gl.bindTexture(gl.TEXTURE_2D, texture);
+    }
+
+    bindTexture3D(texture, bindID) {
+        const gl = this.graphicsAPI;
+        gl.activeTexture(gl.TEXTURE0 + bindID);
+        gl.bindTexture(gl.TEXTURE_3D, texture);
     }
 
     deleteTexture(tex) {
